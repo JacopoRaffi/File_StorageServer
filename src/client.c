@@ -16,8 +16,8 @@
 #define MAX_DIM_LEN 1024 // grandezza massima del contenuto di un file: 1 KB
 #define UNIX_PATH_MAX 108 /* man 7 unix */
 
-int stampa = 0; // se impostato ad 1 attiverà la stampa degli esiti delle operazioni richieste al server
-int time_ms; // variabile in cui sarà impostato il tempo che intercorre tra due richieste consecutive al server
+int stampa = 0; // flag per abilitare la stampa
+int time_ms; // flag che determina il tempo tra due operazioni
 
 // il nodo della lista dei comandi:
 typedef struct node{
@@ -54,10 +54,10 @@ void recSearch (char* dirname, int n, char* dest_dirname){
             exit(EXIT_FAILURE);
         }
 
-        //SE FILE E' UNA DIRECTORY
+        //se file è una directory
         if (S_ISDIR(info.st_mode)){
             if (strcmp(entry->d_name,".") == 0 || strcmp(entry->d_name,"..") == 0)
-                continue;// . -> stessa cartella / .. -> cartella prec
+                continue;
             recSearch(path,n,dest_dirname);
         }
         else{
@@ -125,7 +125,7 @@ void recSearch (char* dirname, int n, char* dest_dirname){
         exit(EXIT_FAILURE);
     }
 }
-//aggiunta in coda
+//aggiunge in coda un comando
 void addLast (node** lst, char* cmd, char* arg) {
     node * new = malloc (sizeof(node)); // spazio per memorizzare il nodo comando
     if (new == NULL){
@@ -165,7 +165,7 @@ void addLast (node** lst, char* cmd, char* arg) {
     last->next = new;
     new->prec = last;
 }
-
+//verifica la presenza di un determinato comando
  int containCMD (node** lst, char* cmd, char** arg){
 
     node * curr = *lst;
@@ -219,12 +219,12 @@ void freeList (node ** lst){
 }
 
 int main (int argc, char * argv[]){
-    char opt; // carattere per memorizzare l'operatore di un dato comando
+    char opt;
 
-    // stringhe per ospitare gli argomenti dei vari comandi
+    // stringhe per memorizzare gli argomenti dei comandi
     char *farg, *warg, *Warg, *rarg, *Rarg, *darg, *Darg, *larg, *uarg, *targ, *carg;
 
-    // flags per determinare se il comando non ripetibile è stato richiesto
+    // flags per determinare che i comandi -p e -f non siano ripetuti
     int ff = 0;
     int pf = 0;
 
@@ -238,7 +238,6 @@ int main (int argc, char * argv[]){
     // la lista dei comandi viene popolata secondo gli argomenti di avvio
     while ((opt = (char)getopt(argc,argv,"hpf:w:W:u:l:D:r:R:d:t:c:")) != -1){
         switch (opt){
-            // i seguenti 3 comandi possono essere richiesti al più una volta, pertanto solo il primo verrà considerato valido
             case 'h':{
                 printf("OPERAZIONI SUPPORTATE: \n");
                 printf("-h help\n-f filename\n-w dirname[,n=0]\n-W file1[,file2]\n");
@@ -350,7 +349,6 @@ int main (int argc, char * argv[]){
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME,&ts);
         ts.tv_sec = ts.tv_sec+60;
-        // tentativo di connessione con tempo tra i tentativi di 1 secondi
         if (openConnection(farg,1000,ts)==-1){
             if (stampa==1) printf("OP : -f (connessione) File : %s Esito : fallimento\n",farg);
             perror("Standard ERROR: apertura della connessione");
@@ -361,7 +359,7 @@ int main (int argc, char * argv[]){
         msSleep(time_ms); // attesa tra due operazioni consecutive
     }
 
-    // le operazioni restanti verranno ora eseguite: -w -W -D -r -R -d -t -l -u -c
+    // le operazioni restanti: -w -W -D -r -R -d -t -l -u -c
     node * curr = listCmd;
     while (curr != NULL){
 
@@ -745,7 +743,7 @@ int main (int argc, char * argv[]){
     freeList(&listCmd);
     free(resolvedPath);
     free(arg);
-    //una volta che tutte le operazioni richieste sono state eseguite la connessione al server viene chiusa
+    //chiusura della connessione una volta eseguite tutte le richieste
     closeConnection(farg);
     return 0;
 }

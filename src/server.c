@@ -11,15 +11,15 @@
 #include <assert.h>
 
 
-#define DIM_MSG 2048   // dimensione di alcuni messaggi scambiati tra server ed API
-#define MAX_DIM_LEN 1024 // grandezza massima del contenuto di un file: 1 KB
+#define DIM_MSG 2048   // dimensione dei messaggi tra client e server
+#define MAX_DIM_LEN 1024 // grandezza massima del contenuto di un file
 #define UNIX_PATH_MAX 108 /* man 7 unix */
 #define SOCKET_NAME "./serverSocket.sk"  // nome di default per il socket
 #define LOG_NAME "./log.txt"    // nome di default per il file di log
 #define TRUE 1
 
-FILE* fileLog; // puntatore al file di log
-pthread_mutex_t logLock = PTHREAD_MUTEX_INITIALIZER; // mutex sul file di log
+FILE* fileLog;
+pthread_mutex_t logLock = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct scnode{
     size_t client;
@@ -46,7 +46,7 @@ typedef struct sfile{
     cList* openClient;
     size_t lockOwner;
     size_t op; //indica se il file è aperto o meno
-    FIFOnode* FIFOfile; //usato così che quando modifico la frequenza del file
+    FIFOnode* FIFOfile; //usato per efficenza
     struct sfile* next;
     struct sfile* prec;
 } file;
@@ -69,17 +69,17 @@ typedef struct shash{
     size_t numBuckets;
 }hash;
 
-//  VARIABILI GLOBALI SULLA GESTIONE DELLO STORAGE  //
+// variabili per lo storage  //
 static size_t numThread;    // numero di thread worker del server
 static size_t maxDIm;    // dimensione massima dello storage
 static size_t numFileMax;      // numero massimo di files nello storage
 static size_t currDim = 0;   // dimensione corrente dello storage
 static size_t currNumFile = 0;     // numero corrente di files nello storage
 
-static hash* storage = NULL;    // struttura dati in cui saranno raccolti i files amministratidal server
+static hash* storage = NULL;    // storage
 
-static fifo* queue = NULL;      // struttura dati di appoggio per la gestione dei rimpizzamenti con politica fifo
-pthread_mutex_t lockQueue = PTHREAD_MUTEX_INITIALIZER; // mutex per mutua esclusione sulla coda fifo
+static fifo* queue = NULL;      // struttura per il rimpiazzamento FIFO e LFU
+pthread_mutex_t lockQueue = PTHREAD_MUTEX_INITIALIZER;
 
 static cList* clientList = NULL;     // struttura dati di tipo coda FIFO per la comunicazione Master/Worker (uso improprio della nomenclatura "client")
 pthread_mutex_t lockClientList = PTHREAD_MUTEX_INITIALIZER; // mutex per mutua esclusione sugli accessi alla coda
@@ -110,7 +110,7 @@ static size_t numClose = 0; // numero di operazioni close avvenute con successo
 static size_t maxNumConnections = 0;   // numero massimo di connessioni contemporanee raggiunto
 static size_t numConnectionsCurr = 0;   // numero di connessioni correnti
 
-//    FUNZIONI PER MUTUA ESCLUSIONE -> Versione vista a lezione   //
+//    Versione vista a lezione   //
 static void Pthread_mutex_lock (pthread_mutex_t* mtx){
     int err;
     if ((err=pthread_mutex_lock(mtx)) != 0 ){
@@ -127,15 +127,6 @@ static void Pthread_mutex_unlock (pthread_mutex_t* mtx){
         pthread_exit((void*)errno);
     }
 }
-
-//    FUNZIONI PER NODI DI client   //
-/**
- *   @brief Funzione che inizializza un clNode
- *
- *   @param client  descrittore della connessione con un client
- *
- *   @return puntatore al clNode inizializato, NULL in caso di fallimento
- */
 static clNode* clNodeCreate (size_t client){
     if (client == 0){
         errno = EINVAL;
@@ -156,14 +147,6 @@ static clNode* clNodeCreate (size_t client){
     return tmp;
 }
 
-//    FUNZIONI PER LISTE DI NODI DI client   // (USATE anche per comunicazione Main Thread/WorkerThread)
-/**
- *   @brief Funzione che inizializza una lista di clNode
- *
- *   @param //
- *
- *   @return puntatore alla cList inizializata, NULL in caso di fallimento
- */
 static cList* cListCreate (){
     cList* tmp = malloc(sizeof(cList));
     if (tmp == NULL){
@@ -176,13 +159,7 @@ static cList* cListCreate (){
 
     return tmp;
 }
-/**
- *   @brief Funzione che libera la memoria allocata per una cList
- *
- *   @param lst  puntatore alla cList di cui fare la free
- *
- *   @return //
- */
+
 static void cListFree (cList* lst){
     if (lst == NULL){
         errno = EINVAL;
@@ -198,14 +175,7 @@ static void cListFree (cList* lst){
 
     free(lst);
 }
-/**
- *   @brief Funzione che verifica la presenza di un client in una cList
- *
- *   @param lst  puntatore alla cList
- *   @param client  descrittore della connessione con un client
- *
- *   @return 0 -> esito negativo, 1 -> esito positivo, -1 -> fallimento
- */
+
 static int cListContains (cList* lst, size_t client){
     if (lst == NULL || client == 0){
         errno = EINVAL;
@@ -221,14 +191,7 @@ static int cListContains (cList* lst, size_t client){
     //errno = ENOENT;
     return 0;
 }
-/**
- *   @brief Funzione che aggiunge un nodo in testa ad una cList
- *
- *   @param lst  puntatore alla cList
- *   @param client  descrittore della connessione con un client
- *
- *   @return 0 -> 1 -> esito positivo, -1 -> fallimento
- */
+
 static int cListAddHead (cList* lst, size_t client){
     if (lst == NULL || client == 0){
         errno = EINVAL;
@@ -247,13 +210,7 @@ static int cListAddHead (cList* lst, size_t client){
     }
     return 0;
 }
-/**
- *   @brief Funzione chiamata dai thread worker per ottenere il descrittore della connessione con il prossimo client
- *
- *   @param lst  puntatore alla cList
- *
- *   @return int: descrittore -> successo, -2 -> fallimento
- */
+
 static int ClistPopWorker (cList* lst){
     if (lst == NULL){
         errno = EINVAL;
@@ -279,14 +236,7 @@ static int ClistPopWorker (cList* lst){
     }
 
 }
-/**
- *   @brief Funzione che elimina un dato descrittore dalla cList
- *
- *   @param lst  puntatore alla cList
- *   @param client  descrittore della connessione con un client
- *
- *   @return 0 -> esito negativo, 1 -> esito positivo, -1 -> fallimento
- */
+
 static int cListRemoveNode (cList* lst, size_t client){
     if (lst == NULL || client == 0){
         errno = EINVAL;
@@ -340,16 +290,7 @@ static int cListRemoveNode (cList* lst, size_t client){
     return -1;
 }
 
-//    FUNZIONI PER AMMINISTRARE I FILE    //
-/**
- *   @brief Funzione che inizializza un file
- *
- *   @param path  path assoluto del file
- *   @param data contenuto del file
- *   @param lo descrittore del lock owner
- *
- *   @return puntatore al file inizializzato, NULL in caso di errore
- */
+
 static file* fileCreate (char* path, char* data, size_t lockClient){
     if (path == NULL || data == NULL){
         errno = EINVAL;
@@ -400,13 +341,7 @@ static file* fileCreate (char* path, char* data, size_t lockClient){
 
     return tmp;
 }
-/**
- *   @brief Funzione che libera la memoria allocata per un file
- *
- *   @param file1  puntatore al file
- *
- *   @return //
- */
+
 static void freeFile (file* file1){
     if (file1 == NULL)  
         return;
@@ -415,13 +350,7 @@ static void freeFile (file* file1){
     free(file1 -> data);
     free(file1);
 }
-/**
- *   @brief Funzione che effettua la copia di un file
- *
- *   @param file1  puntatore al file
- *
- *   @return puntatore al file copia, NULL per fallimento
- */
+
 static file* cloneFile (file* file1)
 {
     if (file1 == NULL)
@@ -458,14 +387,6 @@ static file* cloneFile (file* file1)
     return copy;
 }
 
-//    FUNZIONI PER AMMINISTRARE LA POLITICA FIFO DELLA "FIFO* QUEUE"   //
-/**
- *   @brief Funzione che inizializza un nodo per la coda FIFO
- *
- *   @param path  path assoluto univoco del file/nodo
- *
- *   @return puntatore al FIFOnode, NULL per fallimento
- */
 static FIFOnode* FIFOnodeCreate (char* path){
     FIFOnode* tmp = malloc(sizeof(FIFOnode));
     if (tmp == NULL){
@@ -485,27 +406,13 @@ static FIFOnode* FIFOnodeCreate (char* path){
     strcpy(tmp->path, path);
     return tmp;
 }
-/**
- *   @brief Funzione che libera lo spazio allocato per un nodo per la coda FIFO
- *
- *   @param node1  puntatore al FIFOnode
- *
- *   @return //
- */
+
 static void FIFOnodeFree (FIFOnode* node1){
     if (node1 == NULL) 
         return;
     free(node1 -> path);
     free(node1);
 }
-
-/**
- *   @brief Funzione che inizializza una coda FIFO
- *
- *   @param //
- *
- *   @return puntatore alla coda FIFO, NULL in caso di fallimento
- */
 static fifo* FIFOcreate (){
     fifo* tmp = malloc(sizeof(fifo));
     if (tmp == NULL){
@@ -519,13 +426,6 @@ static fifo* FIFOcreate (){
 
     return tmp;
 }
-/**
- *   @brief Funzione libera lo spazio allocato per una coda FIFO
- *
- *   @param puntatore alla coda FIFO
- *
- *   @return //
- */
 static void FIFOFree (fifo* lst){
     if (lst == NULL){
         errno = EINVAL;
@@ -540,14 +440,7 @@ static void FIFOFree (fifo* lst){
     lst->tail = NULL;
     free(lst);
 }
-/**
- *   @brief Funzione che esegue la push di un nodo in una coda FIFO
- *
- *   @param lst puntatore alla coda FIFO
- *   @param file1 puntatore alla nodo
- *
- *   @return 1 -> successo, -1 -> fallimento
- */
+
 static int FIFOAdd (fifo* lst, FIFOnode* file1){
     Pthread_mutex_lock(&lockQueue);
 
@@ -571,14 +464,7 @@ static int FIFOAdd (fifo* lst, FIFOnode* file1){
 
     return 0;
 }
-/**
- *   @brief Funzione che rimuove un file da una coda FIFO
- *
- *   @param lst puntatore alla coda FIFO
- *   @param path    path univoco del nodo da rimuovere
- *
- *   @return 0 -> file non trovato, 1 -> successo, -1 -> fallimento
- */
+
 static int FIFORemove (fifo* lst, char* path){
     Pthread_mutex_lock(&lockQueue);
 
@@ -641,15 +527,6 @@ static int FIFORemove (fifo* lst, char* path){
     return -1;
 }
 
-
-//    FUNZIONI PER AMMINISTRARE LISTE DI FILE    //
-/**
- *   @brief Funzione che inizializza una lista di files
- *
- *   @param //
- *
- *   @return puntatore alla lista, NULL per fallimento
- */
 static fileList* fileListCreate (){
     fileList* tmp = malloc(sizeof(fileList));
     if (tmp == NULL){
@@ -664,13 +541,7 @@ static fileList* fileListCreate (){
 
     return tmp;
 }
-/**
- *   @brief Funzione che libera lo spazio allocato per una lista di files
- *
- *   @param puntatore alla lista
- *
- *   @return //
- */
+
 static void fileListFree (fileList* lst){
     if (lst == NULL){
         errno = EINVAL;
@@ -687,13 +558,7 @@ static void fileListFree (fileList* lst){
     lst->tail = NULL;
     free(lst);
 }
-/**
- *   @brief Funzione che stampa una rappresentazione di una lista di files
- *
- *   @param puntatore alla lista
- *
- *   @return //
- */
+
 static void fileListPrint (fileList* lst){
     if (lst == NULL){
         printf("NULL\n");
@@ -710,14 +575,7 @@ static void fileListPrint (fileList* lst){
     }
     printf("FINE\n");
 }
-/**
- *   @brief Funzione che recupera il puntatore ad un file da una lista di files
- *
- *   @param lst puntatore alla lista
- *   @param path    path assoluto del file da estrarre
- *
- *   @return puntatore al file, NULL in caso di fallimento
- */
+
 static file* fileListGetFile (fileList* lst, char* path){
     if (lst == NULL || path == NULL ){
         errno = EINVAL;
@@ -733,14 +591,7 @@ static file* fileListGetFile (fileList* lst, char* path){
 
     return NULL;
 }
-/**
- *   @brief Funzione che determina se un file è presente in una lista di files
- *
- *   @param lst puntatore alla lista
- *   @param path    path assoluto del file da ricercare
- *
- *   @return 1 -> esito positivo, 0 -> esito negativo, -1 -> errore
- */
+
 static int fileListContains (fileList* lst, char* path){
     if (lst == NULL || path == NULL){
         errno = EINVAL;
@@ -755,14 +606,7 @@ static int fileListContains (fileList* lst, char* path){
     }
     return 0;
 }
-/**
- *   @brief Funzione che aggiunge un file ad una lista di files se questa non lo contiene
- *
- *   @param lst puntatore alla lista
- *   @param file1   puntatore al file
- *
- *   @return 1 -> esito positivo, 0 -> esito negativo, -1 -> errore
- */
+
 static int fileListAddHead (fileList* lst, file* file1){
     if (lst == NULL || file1 == NULL){
         errno = EINVAL;
@@ -790,14 +634,7 @@ static int fileListAddHead (fileList* lst, file* file1){
     lst->size++;
     return 0;
 }
-/**
- *   @brief Funzione che rimuove un file da una lista di files
- *
- *   @param lst puntatore alla lista
- *   @param path    path assoluto del file da rimuovere
- *
- *   @return puntatore alla copia del file rimosso, NULL in caso di errore
- */
+
 static file* fileListRemove (fileList* lst, char* path){
     if (lst == NULL || path == NULL){
         errno = EINVAL;
@@ -853,14 +690,6 @@ static file* fileListRemove (fileList* lst, char* path){
     return NULL;
 }
 
-//    FUNZIONI PER AMMINISTRARE TABELLE HASH    //
-/**
- *   @brief funzione che inizializza una tabella hash
- *
- *   @param numBuckets  numero di liste componenti la tabella hash
- *
- *   @return puntatore alla tabella hash, NULL in caso di errore
-*/
 
 static hash* hashCreate (size_t numBuckets){
     if (numBuckets == 0){
@@ -893,13 +722,7 @@ static hash* hashCreate (size_t numBuckets){
 
     return tmp;
 }
-/**
- *   @brief funzione restituisce un valore utile alla determinazione dell'indice in cui un dato file sarà inserito nella tabella hash
- *
- *   @param str stringa in base alla quale sarà calcolato l'output
- *
- *   @return valore di cui si farà poi il %list_no per ottenere l'indice, -1 in caso di errore
-*/
+
 static long long hashFunction (const char* string){
     if (string == NULL){
         errno = EINVAL;
@@ -920,14 +743,6 @@ static long long hashFunction (const char* string){
     return h_v;
 }
 
-/**
- *   @brief funzione che aggiuge un file ad una tabella hash
- *
- *   @param tbl puntatore alla tabella hash
- *   @param file1   puntatore al file
- *
- *   @return 1 -> successo, -1 -> fallimento
-*/
 static FIFOnode* hashAdd (hash* tbl, file* file1){
     if (tbl == NULL || file1 == NULL){
         errno = EINVAL;
@@ -957,14 +772,6 @@ static FIFOnode* hashAdd (hash* tbl, file* file1){
    return NULL;
 }
 
-/**
- *   @brief funzione che rimuove un file ad una tabella hash dato il suo path assoluto
- *
- *   @param tbl puntatore alla tabella hash
- *   @param path    path assoluto del file
- *
- *   @return puntatore alla copia del file rimosso dalla tabella hash -> successo, NULL -> fallimento
-*/
 static file* hashRemove (hash* tbl, char* path){
     if (tbl == NULL || path == NULL){
         errno = EINVAL;
@@ -985,14 +792,7 @@ static file* hashRemove (hash* tbl, char* path){
     }
     return NULL;
 }
-/**
- *   @brief funzione che ottiene il puntatore ad un file di una tabella hash
- *
- *   @param tbl puntatore alla tabella hash
- *   @param path    path assoluto del file
- *
- *   @return puntatore al file richiesto -> successo, NULL -> fallimento
-*/
+
 static file* hashGetFile (hash* tbl, char* path){
     if (tbl == NULL || path == NULL){
         errno = EINVAL;
@@ -1006,14 +806,7 @@ static file* hashGetFile (hash* tbl, char* path){
     }
     return NULL;
 }
-/**
- *   @brief funzione che ottiene il puntatore ad una lista contenente il file di una tabella hash
- *
- *   @param tbl puntatore alla tabella hash
- *   @param path    path assoluto del file
- *
- *   @return puntatore alla lista richiesta -> successo, NULL -> fallimento
-*/
+
 static fileList* hashGetList (hash* tbl, char* path){
     if (tbl == NULL || path == NULL){
         errno = EINVAL;
@@ -1027,13 +820,7 @@ static fileList* hashGetList (hash* tbl, char* path){
     }
     return NULL;
 }
-/**
- *   @brief funzione che libera lo spazio allocato per una tabella hash
- *
- *   @param tbl puntatore alla tabella hash
- *
- *   @return //
-*/
+
 static void hashFree (hash* tbl){
     if (tbl == NULL) return;
 
@@ -1044,13 +831,7 @@ static void hashFree (hash* tbl){
     free(tbl->buckets);
     free(tbl);
 }
-/**
- *   @brief funzione che stampa un rappresentazione di una tabella hash
- *
- *   @param tbl puntatore alla tabella hash
- *
- *   @return //
-*/
+
 static void hashPrint (hash* tbl){
     if(tbl == NULL){
         printf("NULL\n");
@@ -1065,14 +846,7 @@ static void hashPrint (hash* tbl){
 
     printf("FINE\n");
 }
-/**
- *   @brief funzione che individua la presenza di un file in una tabella hash
- *
- *   @param tbl puntatore alla tabella hash
- *   @param path    path assoluto del file
- *
- *   @return -1 -> errore, 0 -> file non trovato, 1 -> successo
-*/
+
 static int hashContains (hash* tbl, char* path){
     if (tbl == NULL || path == NULL){
         errno = EINVAL;
@@ -1086,16 +860,6 @@ static int hashContains (hash* tbl, char* path){
     }
     return -1;
 }
-/**
- *   @brief funzione che controlla la presenza di un superamento dei limiti massimi di memoria e se presente applica il rimpiazzamento
- *
- *   @param tbl puntatore alla tabella hash
- *   @param path    path assoluto del file che potrebbe aver causato il superamento del limite massimo di memoria
- *   @param client  descrittore del client che ha richiesto l'operazione causante potenziale overflow
- *
- *   @return un puntatore ad una fileList contenente i files rimossi, NULL altrimenti
-*/
-
 
 void swap ( size_t* a, size_t* b, char* aa, char* bb){
     char* tmp = malloc(sizeof(char) * UNIX_PATH_MAX);
@@ -1108,22 +872,15 @@ void swap ( size_t* a, size_t* b, char* aa, char* bb){
 }
 
 
-/* Considers last element as pivot, places the
-pivot element at its correct position in sorted array,
-and places all smaller (smaller than pivot) to left
-of pivot and all greater elements to right of pivot */
+
 FIFOnode* partition( FIFOnode* l, FIFOnode* h){
-    // set pivot as h element
     size_t x = h->frequency;
 
-    // similar to i = l-1 for array implementation
     FIFOnode* i = l->prec;
 
-    // Similar to "for (int j = l; j <= h- 1; j++)"
     FIFOnode* j;
     for (j = l; j != h; j = j->next){
         if (j->frequency <= x){
-            // Similar to i++ for array
             i = (i == NULL) ? l : i->next;
 
             swap(&(i->frequency), &(j->frequency), i->path, j->path);
@@ -1134,7 +891,6 @@ FIFOnode* partition( FIFOnode* l, FIFOnode* h){
     return i;
 }
 
-/* A recursive implementation of quicksort for linked list */
 void FquickSort(FIFOnode* l, FIFOnode* h){
     if (h != NULL && l != h && l != h->next){
         FIFOnode* p = partition(l, h);
@@ -1143,13 +899,9 @@ void FquickSort(FIFOnode* l, FIFOnode* h){
     }
 }
 
-// The main function to sort a linked list.
-// It mainly calls _quickSort()
 void quickSortLFU(fifo* lst){
-    // Find last node
     FIFOnode* h = lst -> tail;
 
-    // Call the recursive QuickSort
     FquickSort(lst->head, h);
 }
 
@@ -1164,7 +916,6 @@ FIFOnode* copy(FIFOnode* cp){
 
     return tmp;
 }
-//usare quicksort su double linked list
 static fileList* hashReplaceLFU(hash* tbl, const char* path, size_t client){
     if(tbl == NULL || path == NULL || client < 0){
         errno = EINVAL;
@@ -1177,7 +928,7 @@ static fileList* hashReplaceLFU(hash* tbl, const char* path, size_t client){
     }
 
     int bool = 0; // flag per evidenziare l'avvio o meno dell'algoritmo per i rimpiazzamenti
-    FIFOnode* killedFile = NULL; // punatatore al nodo della coda fifo che conterrà il path del file potenzialmente rimpiazzabile
+    FIFOnode* killedFile = NULL;
     fifo* queueCopy = FIFOcreate();
     if (queueCopy == NULL){
         fileListFree(replaced);
@@ -1198,7 +949,7 @@ static fileList* hashReplaceLFU(hash* tbl, const char* path, size_t client){
 
     }
 
-    while (currDim > maxDIm){ // fin quando i valori non sono rientrati entro i limiti
+    while (currDim > maxDIm){ // finchè la dimensione corrente è maggiore della massima
         bool = 1; // la flag viene impostata  per indicare che l'algoritmo di rimpiazzamento è di fatto partito
         if (killedFile == NULL)
             killedFile = queueCopy->tail;
@@ -1213,8 +964,7 @@ static fileList* hashReplaceLFU(hash* tbl, const char* path, size_t client){
             return NULL;
         }
 
-        while ((removedFile->lockOwner != 0 && removedFile->lockOwner != client) || strcmp(killedFile->path, path) == 0){ // fin quando il file rimovibile individuato non rispetta le caratteristiche per poter essere rimosso esso viene ignorato
-            // il file non deve essere lockato da altri client e inoltre non deve essere quello causa del superamento dei limiti
+        while ((removedFile->lockOwner != 0 && removedFile->lockOwner != client) || strcmp(killedFile->path, path) == 0){
             killedFile = killedFile->prec;
             if (killedFile == NULL){
                 errno = EFBIG;
@@ -1228,7 +978,7 @@ static fileList* hashReplaceLFU(hash* tbl, const char* path, size_t client){
             }
         }
 
-        file* copy = cloneFile(removedFile); // il file rimovibile può essere rimosso, ma prima viene copiato
+        file* copy = cloneFile(removedFile); // il file rimovibile può essere rimosso
         if (copy == NULL)
             return NULL;
         fileList* tmpList = hashGetList(storage, removedFile -> path);
@@ -1254,7 +1004,7 @@ static fileList* hashReplaceLFU(hash* tbl, const char* path, size_t client){
     if (bool == 1)
         numReplaceAlgo++;// le statistiche vengono aggiornate
     if (currDim > maxDimReached)
-        maxDimReached = currDim;// le statistiche vengono aggiornate
+        maxDimReached = currDim;
     Pthread_mutex_unlock(&lockStats);
 
     FIFOFree(queueCopy);
@@ -1274,10 +1024,10 @@ static fileList* hashReplaceFIFO (hash* tbl, const char* path, size_t client){
     }
 
     int bool = 0; // flag per evidenziare l'avvio o meno dell'algoritmo per i rimpiazzamenti
-    FIFOnode* killedFile = NULL; // punatatore al nodo della coda fifo che conterrà il path del file potenzialmente rimpiazzabile
+    FIFOnode* killedFile = NULL;
 
-    while (currDim > maxDIm){ // fin quando i valori non sono rientrati entro i limiti{
-        bool = 1; // la flag viene impostata  per indicare che l'algoritmo di rimpiazzamento è di fatto partito
+    while (currDim > maxDIm){
+        bool = 1; // la flag viene impostata  per indicare che l'algoritmo di rimpiazzamento è partito
         if (killedFile == NULL)
             killedFile = queue->tail; // la coda fifo verrà effettivamente percorsa dal primo elemento inserito verso l'ultimo
         if (killedFile == NULL){
@@ -1307,10 +1057,10 @@ static fileList* hashReplaceFIFO (hash* tbl, const char* path, size_t client){
             }
         }
 
-        file* copy = cloneFile(removedFile); // il file rimovibile può essere rimosso, ma prima viene copiato
+        file* copy = cloneFile(removedFile); // il file rimovibile può essere rimosso
         if (copy == NULL) 
             return NULL;
-        killedFile = killedFile->prec; // il puntatore verso l'ultimo elemento analizzato nella coda fifo viene aggiornato
+        killedFile = killedFile->prec;
         fileList* tmpList = hashGetList(storage, removedFile -> path);
         Pthread_mutex_lock(&(tmpList->mtx));
         if (hashRemove(storage, removedFile ->path) == NULL) {
@@ -1321,7 +1071,7 @@ static fileList* hashReplaceFIFO (hash* tbl, const char* path, size_t client){
         Pthread_mutex_lock(&(replaced -> mtx));
         if (fileListAddHead(replaced,copy) == -1) {
             Pthread_mutex_unlock(&(tmpList->mtx));
-            return NULL; // la copia del file rimosso viene inserita nella lista di output
+            return NULL;
         }
         Pthread_mutex_unlock(&(tmpList->mtx));
         Pthread_mutex_lock(&lockStats);
@@ -1333,25 +1083,14 @@ static fileList* hashReplaceFIFO (hash* tbl, const char* path, size_t client){
     if (bool == 1) 
         numReplaceAlgo++;// le statistiche vengono aggiornate
     if (currDim > maxDimReached) 
-        maxDimReached = currDim;// le statistiche vengono aggiornate
+        maxDimReached = currDim;
     Pthread_mutex_unlock(&lockStats);
     return replaced;
 }
-/**
- *   @brief funzione che rimuove tutte le lock in una tabella hash dopo la disconnessione del client
- *
- *   @param tbl puntatore alla tabella hash
- *   @param clientFD    descrittore della connessione
- *
- *   @return //
-*/
-//Algoritmo pressochè uguale alla politica FIFO cambia solo il come è fatta la lista di partenza
-
 
 //puntatore alla funzione di politica di rimpiazzamento
 fileList* (*hashReplace) (hash*, const char*, size_t) = hashReplaceFIFO; //default politica FIFO
-
-
+//una volta terminata la connessione vengono settati a 0 tutti i file lockat dal client disconnesso
 static void resetLockOwner (hash* tbl, size_t clientFD){
     if (tbl == NULL)
         return;
@@ -1387,26 +1126,14 @@ static int isNumber(const char* s, long* n){
     }
     return 0;   // non e' un numero
 }
-/**
- *   @brief funzione per la gestione dei segnali
- *
- *   @param sgnl segnale ricevuto
- *
- *   @return //
-*/
+//gestore dei segnali SIGHUP, SIGINT, SIGQUIT
 static void sigHandler (int sgnl){
     if (sgnl == SIGINT || sgnl == SIGQUIT)
-        end = 1; //SIGINT,SIGQUIT -> TERMINA SUBITO (GENERA STATISTICHE)
+        end = 1; //terminazione bruta
     else if (sgnl == SIGHUP)
-        end = 2; //SIGHUP -> NON ACCETTA NUOVI CLIENT, ASPETTA CHE I CLIENT COLLEGATI CHIUDANO CONNESSIONE
+        end = 2; //terminazione soft
 }
-/**
- *   @brief funzione per l'aggiornamento del file descriptor massimo
- *
- *   @param fdmax descrittore massimo attuale
- *
- *   @return file descriptor massimo -> successo, -1 altrimenti
-*/
+//aggiorna il fd massimo(utile per la select)
 static int updateMax (fd_set set, int fdmax){
     int i;
     for(i = (fdmax-1); i >= 0; i--)
@@ -1416,14 +1143,6 @@ static int updateMax (fd_set set, int fdmax){
     return -1;
 }
 
-/**
- *   @brief Funzione che permette di effettuare la read completandola in seguito alla ricezione di un segnale
- *
- *   @param fd     descrittore della connessione
- *   @param buf    puntatore al messaggio da inviare
- *
- *   @return Il numero di bytes letti, -1 se c'e' stato un errore
- */
 int readn(long fd, void *buf, size_t size) {
     int readn = 0;
     int r = 0;
@@ -1448,14 +1167,6 @@ int readn(long fd, void *buf, size_t size) {
     return readn;
 }
 
-/**
- *   @brief Funzione che permette di effettuare la write completandola in seguito alla ricezione di un segnale
- *
- *   @param fd     descrittore della connessione
- *   @param buf    puntatore al messaggio da inviare
- *
- *   @return Il numero di bytes scritti, -1 se c'è stato un errore
- */
 int writen(long fd, const void *buf, size_t nbyte){
     int writen = 0;
     int w = 0;
@@ -1482,7 +1193,7 @@ int writen(long fd, const void *buf, size_t nbyte){
 }
 
 
-// Le seguenti funzioni sono di fatto speculari a quanto implementato dalla api //
+// Le seguenti operazioni svolgono le richieste delle funzioni nella API //
 /* s_openFile : FLAGS
  * 0 -> 00 -> O_CREATE = 0 && O_LOCK = 0
  * 1 -> 01 -> O_CREATE = 0 && O_LOCK = 1
@@ -1734,7 +1445,7 @@ static fileList* s_readNFile (int N, int* count, size_t client){
             Pthread_mutex_lock(&storage->buckets[i]->mtx);
 
             while(cursor != NULL){
-                //anche i files chiusi possno essere letti, ma questo non vale per i files lockati
+                //anche i files chiusi possno essere letti
                 if(cursor->lockOwner == 0 || cursor->lockOwner == client){
                     file* copy = cloneFile(cursor);
                     if(copy == NULL)
@@ -1759,7 +1470,7 @@ static fileList* s_readNFile (int N, int* count, size_t client){
             file* cursor = storage->buckets[i]->head;
             Pthread_mutex_lock(&storage->buckets[i]->mtx);
 
-            while(cursor != NULL && pkd<N){//anche i files chiusi possno essere letti, ma questo non vale per i files lockati
+            while(cursor != NULL && pkd<N){//anche i files chiusi possno essere letti
                 if (cursor->lockOwner == 0 || cursor->lockOwner == client){
                     file* copy = cloneFile(cursor);
                     if(copy == NULL){
@@ -2058,17 +1769,7 @@ static int s_removeFile (char* path, size_t client){
     }
 }
 
-//STRUTTURA DI QUEST: FUN;ARG1;ARG2;...
-/**
- *   @brief Funzione che interpreta ed esegue le operazioni richieste dai client
- *
- *   @param clientFD    descrittore della connessione
- *   @param pipeFD descrittore della pipe
- *   @param quest   richiesta
- *   @param end     puntatore alla flag indicante l'avvenuta chiusura di una connessione
- *
- *   @return Il numero di bytes scritti, -1 se c'è stato un errore
- */
+//funzione chiamata dai thread worker, gestisce la comunicazione col client tramite API
 static void job (char* quest, int clientFD, int pipeFD, int* endJob){
     if (quest == NULL || clientFD < 1 || pipeFD < 1){
         errno = EINVAL;
@@ -2080,7 +1781,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
     char* token = NULL;
     char* save = NULL;
 
-    token = strtok_r(quest,";",&save);// il token contiene un'operazione che è stata richiesta al server || NULL
+    token = strtok_r(quest,";",&save);
     if (token == NULL){ // tutte le richieste sono state esaudite
         resetLockOwner(storage,clientFD);
         *endJob = 1;
@@ -2095,8 +1796,6 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
     }
 
     if (strcmp(token,"openFile") == 0){
-        // struttura tipica del comando: openFile;pathname;flags;
-
         // tokenizzazione degli argomenti
         token = strtok_r(NULL,";",&save);
         char path[UNIX_PATH_MAX];
@@ -2105,7 +1804,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         int flags = (int) strtol(token,NULL,10);
 
         // esecuzione della richiesta
-        int res;// valore resituito in output dalla openFile di server.c
+        int res;// valore resituito in output dalla openFile del server
         res = s_openFile(path,flags,clientFD);
         if (res == -1){
             sprintf(out,"-1;%d;", errno);
@@ -2128,8 +1827,6 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
     }
     else
     if (strcmp(token,"closeFile") == 0){
-        // struttura tipica del comando: closeFile;pathname;
-
         // tokenizzazione degli argomenti
         token = strtok_r(NULL,";",&save);
         char path[UNIX_PATH_MAX];
@@ -2151,16 +1848,12 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             return;
         }
 
-        // UPDATE DEL FILE DI LOG
-        // s_closeFile : op/Thrd_id/10/(0|1)/File_Path
         Pthread_mutex_lock(&logLock);
         fprintf(fileLog,"thread %lu closeFile %d %s\n",pthread_self(), res, path);
         Pthread_mutex_unlock(&logLock);
     }
     else
     if (strcmp(token,"lockFile") == 0){
-        // struttura tipica del comando: lockFile;pathname;
-
         // tokenizzazione degli argomenti
         token = strtok_r(NULL,";",&save);
         char path[UNIX_PATH_MAX];
@@ -2184,16 +1877,12 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             write(pipeFD,endJob,sizeof(*endJob));
             return;
         }
-        // UPDATE DEL FILE DI LOG
-        // s_lockFile : op/Thrd_id/8/(0|1)/File_Path
         Pthread_mutex_lock(&logLock);
         fprintf(fileLog,"thread %lu lockFile %d %s\n",pthread_self(), res, path);
         Pthread_mutex_unlock(&logLock);
     }
     else
     if (strcmp(token,"unlockFile") == 0){
-        // struttura tipica del comando: unlockFile;pathname;
-
         // tokenizzazione degli argomenti
         token = strtok_r(NULL,";",&save);
         char path[UNIX_PATH_MAX];
@@ -2215,17 +1904,12 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             write(pipeFD,endJob,sizeof(*endJob));
             return;
         }
-
-        // UPDATE DEL FILE DI LOG
-        // s_unlockFile : op/Thrd_id/9/(0|1)/File_Path
         Pthread_mutex_lock(&logLock);
         fprintf(fileLog,"thread %lu unlockFile %d %s\n", pthread_self(), res, path);
         Pthread_mutex_unlock(&logLock);
     }
     else
     if (strcmp(token,"removeFile") == 0){
-        // struttura tipica del comando: removeFile;pathname;
-
         // tokenizzazione degli argomenti
         token = strtok_r(NULL,";",&save);
         char path[UNIX_PATH_MAX];
@@ -2249,16 +1933,12 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             return;
         }
 
-        // UPDATE DEL FILE DI LOG
-        // s_removeFile : op/Thrd_id/11/(0|1)/File_Path
         Pthread_mutex_lock(&logLock);
         fprintf(fileLog,"thread %lu removeFile %d %s\n", pthread_self(), res, path);
         Pthread_mutex_unlock(&logLock);
     }
     else
     if (strcmp(token,"writeFile") == 0){
-        // struttura tipica del comando: writeFile;pathname;data;
-
         // tokenizzazione degli argomenti
         token = strtok_r(NULL,";",&save);
         char path[UNIX_PATH_MAX];
@@ -2320,9 +2000,6 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
 
             cursor = cursor->next;
         }
-
-        // UPDATE DEL FILE DI LOG
-        // s_writeFile : op/Thrd_id/6/(0|1)/File_Path/size/Rplc(0|1)/Rplc_no/Rplc_size
         Pthread_mutex_lock(&logLock);
         fprintf(fileLog,"thread %lu writeFile %d %s %lu %d %lu %lu\n",pthread_self(), logResult, path, dimData, rpl, numReplace, replaceDim);
         Pthread_mutex_unlock(&logLock);
@@ -2330,8 +2007,6 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
     }
     else
     if (strcmp(token,"appendToFile") == 0){
-        // struttura tipica del comando: appendToFile;pathname;data;
-
         // tokenizzazione degli argomenti
         token = strtok_r(NULL,";",&save);
         char path[UNIX_PATH_MAX];
@@ -2388,17 +2063,13 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             cursor = cursor->next;
         }
 
-        // UPDATE DEL FILE DI LOG
-        // appendJob_to_File : op/Thrd_id/7/(0|1)/File_Path/size/Rplc(0|1)/Rplc_no/Rplc_size
         Pthread_mutex_lock(&logLock);
         fprintf(fileLog,"thread %lu appendToFile %d %s %lu %d %lu %lu\n",pthread_self(), logResult, path, dimData, rpl, numReplace, replaceDim);
         Pthread_mutex_unlock(&logLock);
         fileListFree(tmp);
     }
     else
-    if (strcmp(token,"readFile") == 0)
-    {
-        // struttura tipica del comando: readFile;pathname;
+    if (strcmp(token,"readFile") == 0){
 
         // tokenizzazione degli argomenti
         token = strtok_r(NULL,";",&save);
@@ -2406,32 +2077,26 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         strcpy(path,token);
 
         char* buf = malloc(sizeof(char)*MAX_DIM_LEN);
-        if (buf == NULL)
-        {
+        if (buf == NULL){
             errno = ENOMEM;
             free(buf);
             return;
         }
-
         size_t size;
-
         // esecuzione della richiesta
         int res = s_readFile(path,buf,&size,clientFD);
         int logResult;
 
-        if (res == -1)
-        {
+        if (res == -1){
             logResult = 0;
             sprintf(out,"-1;%d;",errno);
         }
-        else
-        {
+        else{
             logResult = 1;
             sprintf(out,"%s;%ld",buf,size);
         }
 
-        if (writen(clientFD,out,DIM_MSG) == -1)
-        {
+        if (writen(clientFD,out,DIM_MSG) == -1){
             perror("Worker : scrittura nel socket");
             *endJob = 1;
             write(pipeFD,&clientFD,sizeof(clientFD));
@@ -2439,9 +2104,6 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             free(buf);
             return;
         }
-
-        // UPDATE DEL FILE DI LOG
-        // s_readFile : op/Thrd_id/4/(0|1)/File_Path/size
         Pthread_mutex_lock(&logLock);
         fprintf(fileLog,"thread %lu readFile %d %s %ld\n",pthread_self(),logResult,path,size);
         Pthread_mutex_unlock(&logLock);
@@ -2449,8 +2111,6 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
     }
     else
     if (strcmp(token,"readNFiles")==0){
-        // struttura tipica del comando: readNFile;N;
-
         // tokenizzazione degli argomenti
         token = strtok_r(NULL,";",&save);
         int N = (int)strtol(token, NULL, 10);
@@ -2498,17 +2158,13 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             cursor = cursor->next;
         }
 
-        // UPDATE DEL FILE DI LOG
-        // read_NFiles : op/Thrd_id/5/(0|1)/numRead/size
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"thread %lu readNFile %d %d\n",pthread_self(),logResult,count);
+        fprintf(fileLog,"thread %lu readNFile %d %d ",pthread_self(),logResult,count);
 
         file* curs = tmp->head;
         size_t tot_size = 0;
 
-        while(curs != NULL)
-        {
-            //fprintf(fileLog,"%s/",curs->path);
+        while(curs != NULL){
             tot_size = tot_size + strlen(curs->data);
             curs = curs->next;
         }
@@ -2518,7 +2174,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         fileListFree(tmp);
     }
     else
-    if (strcmp(token,"closeConnection") == 0){// il client è disconnesso, il worker attenderà il prossimo
+    if (strcmp(token,"closeConnection") == 0){// il client è disconnesso, il worker attende il prossimo
         *endJob = 1;
         if (write(pipeFD, &clientFD, sizeof(clientFD)) == -1){
             perror("Worker : scrittura nella pipe");
@@ -2530,7 +2186,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         }
     }
     else{
-        // funzione non implementata <-> ENOSYS
+        // funzione non implementata
         sprintf(out,"-1;%d",ENOSYS);
         if (writen(clientFD,out,DIM_MSG) == -1){
             perror("Worker : scrittura nel socket");
@@ -2559,18 +2215,17 @@ static void* worker (void* arg){
         Pthread_mutex_unlock(&lockClientList);
 
         if (clientFD == -1){
-            return (void*) 0;
+            return (void*) 0; //indica la terminazione del server
         }
 
         while (endJob != 1){
             char quest [DIM_MSG];
             memset(quest,0,DIM_MSG);
 
-            //il client viene servito dal worker in ogni sua richiesta sino alla disconnessione
+            //il worker esegue tutte le richieste del client
             int len = readn(clientFD, quest, DIM_MSG);
 
-            //printf("\n il comando letto è : %s",quest);
-            if (len == -1){// il client è disconnesso, il worker attendJoberà il prossimo
+            if (len == -1){// il client è disconnesso
                 endJob = 1;
                 if (write(pipeFD, &clientFD, sizeof(clientFD)) == -1){
                     perror("Worker : scrittura nella pipe");
@@ -2596,13 +2251,12 @@ int main(int argc, char* argv[]){
     clientList = cListCreate();
     int softEnd = 0;
     char socket_name[100];
-
+    //valori di default
     numFileMax = 20;
     maxDIm = 1024 * 1024;
     numThread = 4;
     numLists = numFileMax/2; //dimensione tabella di default
     strcpy(socket_name, SOCKET_NAME);
-    // valori standard
 
     char *path_config = NULL;
     if (argc == 3) {
@@ -2610,7 +2264,7 @@ int main(int argc, char* argv[]){
             path_config = argv[2];
         }
     }
-    // parsing file config.txt -- attributo=valore -- se trovo errore uso attributi di default
+    // parsing file config.txt
     if (path_config != NULL){
         char string[200];
         FILE *fp;
@@ -2620,8 +2274,8 @@ int main(int argc, char* argv[]){
             exit(EXIT_FAILURE);
         }
 
-        char campo[100]; // campo da configurare ->arg
-        char valore[100]; // valore del campo ->val
+        char campo[100]; // campo da configurare = arg
+        char valore[100]; // valore del campo = val
         while (fgets(string, 200, fp) != NULL){
             if (string[0] != '\n'){
                 int nf;
@@ -2707,7 +2361,7 @@ int main(int argc, char* argv[]){
         }
 
         struct sigaction s;
-        memset(&s, 0, sizeof(s)); // setta tutta la struct a 0
+        memset(&s, 0, sizeof(s));
         s.sa_handler = sigHandler;
 
         output = sigaction(SIGINT, &s, NULL);  // imposto l'handler per SIGINT
@@ -2746,10 +2400,9 @@ int main(int argc, char* argv[]){
             fflush(stdout);
             exit(EXIT_FAILURE);
         }
-    } // gestione dei segnali
+    }
 
     {
-        // STRUTTURE PRINCIPALI
         storage = hashCreate(numLists);
         if (storage == NULL){
             errno = ENOMEM;
@@ -2762,11 +2415,11 @@ int main(int argc, char* argv[]){
             return -1;
         }
 
-        // FILE DI LOG
-        fileLog = fopen(LOG_NAME,"w"); // apro il file di log in scrittura
-        fprintf(fileLog,"INIZIO\n"); // scrivo l'avvio del server sul file di log
 
-        // COMUNICAZIONE MAIN <-> WORKER
+        fileLog = fopen(LOG_NAME,"w");
+        fprintf(fileLog,"INIZIO\n");
+
+        //pipe per la comunicazione manager-worker
         int pip[2];
         output = pipe(pip);
         if (output == -1){
@@ -2774,14 +2427,13 @@ int main(int argc, char* argv[]){
             exit(EXIT_FAILURE);
         }
 
-        // INIZIALIZZAZIONE THREAD POOL
+        // thread pool
         pthread_t* threadPool = malloc(sizeof(pthread_t)*numThread);
         if (threadPool == NULL){
             perror("inizializzazione thread_pool");
             exit(EXIT_FAILURE);
         }
         for (i = 0; i < numThread; i++){
-            // il thread worker i-esimo riceve l'indirizzo del lato scrittura della pipe
             output = pthread_create(&threadPool[i],NULL, worker,(void*)(&pip[1]));
             if (output == -1){
                 perror("creazione pthread");
@@ -2790,7 +2442,7 @@ int main(int argc, char* argv[]){
             }
         }
 
-        //SOCKET
+        //socket gestione
         int socketFD;
         int clientFD;
         int numFD = 0;
@@ -2818,7 +2470,7 @@ int main(int argc, char* argv[]){
             exit(EXIT_FAILURE);
         }
 
-        //numFD ha il valore del massimo descrittore attivo -> utile per la select
+        //numFD ha il valore del massimo descrittore attivo
         if (socketFD > numFD) 
             numFD = socketFD;
         //registrazione del socket
@@ -2834,12 +2486,12 @@ int main(int argc, char* argv[]){
         while (TRUE){
             rdSet = set;//ripristino il set di partenza
             if (select(numFD+1,&rdSet,NULL,NULL,NULL) == -1){//gestione errore
-                if (end == 1) break;//chiusura violenta
+                if (end == 1) break;//chiusura bruta
                 else if (end == 2) { //chiusura soft
                     if (numConnectionsCurr==0) break;
                     else {
                         printf("Chiusura Soft\n");
-                        FD_CLR(socketFD,&set);//rimozione del fd del socket dal set, non accetteremo altre connessioni
+                        FD_CLR(socketFD,&set);//rimozione del fd del socket dal set
                         if (socketFD == numFD) numFD = updateMax(set,numFD);//aggiorno l'indice massimo
                         close(socketFD);//chiusura del socket
                         rdSet = set;
@@ -2860,9 +2512,10 @@ int main(int argc, char* argv[]){
                     if (fd == socketFD){ //il socket è pronto per accettare una nuova richiesta di connessine
                         if ((clientFD = accept(socketFD,NULL,0)) == -1){
                             if (end == 1) 
-                                break;//terminazione violenta
+                                break;//terminazione bruta
                             else if (end == 2) {//terminazione soft
-                                if (numConnectionsCurr==0) break;
+                                if (numConnectionsCurr == 0)
+                                    break;
                             }else {
                                 perror("Errore dell' accept");
                             }
@@ -2892,16 +2545,17 @@ int main(int argc, char* argv[]){
                                 if (clientFD1 == numFD)
                                     numFD = updateMax(set,numFD);//aggiorno l'indice massimo
                                 close(clientFD1);//chiusura del client
-                                numConnectionsCurr--;//aggiornamento delle variabili per le statistiche
+                                numConnectionsCurr--;//aggiornamento statistiche
                                 if (end == 2 && numConnectionsCurr == 0){
                                     printf("Terminazione Soft\n");
                                     softEnd = 1;
                                     break;
                                 }
                             }
-                            else{//la richiesta di c1 è stata soddisfatta, aggiorno lo stato del client come pronto
+                            else{
                                 FD_SET(clientFD1,&set);
-                                if (clientFD1 > numFD) numFD = clientFD1;//mi assicuro che numFD contenga l'indice massimo
+                                if (clientFD1 > numFD)
+                                    numFD = clientFD1;//mi assicuro che numFD contenga l'indice massimo
                             }
                         }
                         else
@@ -2943,7 +2597,7 @@ int main(int argc, char* argv[]){
         }
         free(threadPool);
         remove(socket_name);
-    } // server core
+    }
 
     {
         size_t defaultNumRead = 1;
@@ -2957,7 +2611,7 @@ int main(int argc, char* argv[]){
         maxDimReachedMB =  maxDimReached/(1024 * 1024);
         maxDimReachedKB = maxDimReached / 1024;
 
-    } // elaborazioni per il file delle statistiche
+    }
 
     {
         fprintf(fileLog,"RIASSUNTO STATISTICHE:\n");
@@ -2974,15 +2628,15 @@ int main(int argc, char* argv[]){
         printf("Numero di volte in cui è stato avviato l'algoritmo di rimpiazzamento: %lu\n", numReplaceAlgo);
         printf("Stato dello Storage al momento della chiusura\n");
         hashPrint(storage);
-    } // sunto sull'esecuzione
+    }
 
-    {
+    {  //liberazione della memoria
         hashFree(storage);
         FIFOFree(queue);
         cListFree(clientList);
         fclose(fileLog);
 
-    } // ultime free
+    }
 
     return 0;
 }

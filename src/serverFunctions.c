@@ -11,15 +11,15 @@
 #include "../includes/api.h"
 
 #define DIM_MSG 2048
-#define MAX_DIM_LEN 1024 // grandezza massima del contenuto di un file: 1 KB
+#define MAX_DIM_LEN 1024 //grandezza massima contenuto file
 #define UNIX_PATH_MAX 108 /* man 7 unix */
 
-int connesso = 0;//flag indicante lo stato di connessione del client
+int connesso = 0;//indica se il client è connesso
 size_t last_w_size = 0;
 size_t last_rN_size = 0;
-int fdSocket; //fd del socket ->sc
+int fdSocket; //fd del socket
 char socketName[UNIX_PATH_MAX]; //nome del socket
-char request[DIM_MSG]; //stringa usata come comunicazione tra server-client
+char request[DIM_MSG]; //stringa usata per la comunicazione server-client
 
 //funzioni utili
 size_t get_last_w_size (){
@@ -28,7 +28,7 @@ size_t get_last_w_size (){
 size_t get_last_rN_size (){
     return last_rN_size;
 }
-
+//analogo di mkdir -p
 int mkdir_p(const char *path) {
     const size_t len = strlen(path);
     char _path[PATH_MAX];
@@ -168,12 +168,12 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
     return 0;
 }
 int closeConnection(const char* sockname){
-    if (connesso == 0) { // nel caso in cui il client non è connesso abbiamo un Standard ERROR
+    if (connesso == 0) {
         errno = EPERM;
         return -1;
     }
 
-    if (strcmp(socketName,sockname) == 0){// il socket a cui il client è connesso corrisponde a quello parametro
+    if (strcmp(socketName,sockname) == 0){
         char buffer [DIM_MSG];
         memset(buffer,0,DIM_MSG);
         snprintf(buffer, DIM_MSG,"closeConnection");// il comando viene scritto sulla stringa buffer
@@ -195,7 +195,7 @@ int closeConnection(const char* sockname){
 }
 int openFile(const char* path, int flags) {
 
-    if (connesso == 0){// il client è disconnesso -> Standard ERROR
+    if (connesso == 0){
         errno = ENOTCONN;
         return -1;
     }
@@ -209,7 +209,7 @@ int openFile(const char* path, int flags) {
         errno = EREMOTEIO;
         return -1;
     }
-    if(readn(fdSocket, request, DIM_MSG) == -1){// lettura della risposta del server -> scrittura in request
+    if(readn(fdSocket, request, DIM_MSG) == -1){// lettura risposta server
         errno = EREMOTEIO;
         return -1;
     }
@@ -217,17 +217,17 @@ int openFile(const char* path, int flags) {
     char* token;
     token = strtok_r(request,";", &save);
 
-    if (strcmp(token, "-1") == 0){ //l'operazione eseguita dal server è fallita
+    if (strcmp(token, "-1") == 0){ //fallimento
         token = strtok_r(NULL,";", &save);
         errno = (int)strtol(token, NULL, 10);
         return -1;
     }
-    else{ //l'operazione eseguita dal server è stata completata correttamente
+    else{ //successo operazione
         return 0;
     }
 }
 int closeFile(const char* path) {
-    if (connesso == 0) {// il client è disconnesso
+    if (connesso == 0) {
         errno = ENOTCONN;
         return -1;
     }
@@ -249,18 +249,18 @@ int closeFile(const char* path) {
     char* save = NULL;
     token = strtok_r(request, ";", &save);
 
-    if (strcmp(token, "-1") == 0) {// operazione terminata con fallimento
+    if (strcmp(token, "-1") == 0) {//fallimento operazione
         token = strtok_r(NULL,";", &save);
         errno = (int)strtol(token, NULL, 10);
         return -1;
     }
-    else {// operazione terminata con successo
+    else {// successo operazione
         return 0;
     }
 }
 int removeFile(const char* path) {
 
-    if (connesso == 0) {// il client è disconnesso
+    if (connesso == 0) {
         errno = ENOTCONN;
         return -1;
     }
@@ -287,12 +287,12 @@ int removeFile(const char* path) {
         errno = (int)strtol(token, NULL, 10);
         return -1;
     }
-    else{// operazione terminata con successo
+    else{// operazione successo
         return 0;
     }
 }
 int lockFile(const char* path){
-    if (connesso == 0){ // il client è disconnesso
+    if (connesso == 0){
         errno = ENOTCONN;
         return -1;
     }
@@ -319,7 +319,7 @@ int lockFile(const char* path){
         errno = (int)strtol(token, NULL, 10);
         return -1;
     }
-    else{ // operazione terminata con successo
+    else{ // operazione successo
         return 0;
     }
 }
@@ -351,24 +351,24 @@ int unlockFile(const char* path){
         errno = (int)strtol(token, NULL, 10);
         return -1;
     }
-    else{ // operazione con successo
+    else{ // operazione successo
         return 0;
     }
 }
 int writeFile(const char* path, const char* dir){
-    if (connesso == 0){ // il client è disconnesso
+    if (connesso == 0){
         errno = ENOTCONN;
         return -1;
     }
 
-    if (dir != NULL){// se la directory non esiste ne viene creata una nuova
+    if (dir != NULL){// se la directory non esiste viene creata
         if (mkdir_p(dir) == -1){
             if (errno != EEXIST) return -1;
         }
     }
 
     FILE *fp;
-    if ((fp = fopen(path, "r")) == NULL) {// file non trovato
+    if ((fp = fopen(path, "r")) == NULL) {
         errno = ENOENT;
         return -1;
     }
@@ -377,12 +377,12 @@ int writeFile(const char* path, const char* dir){
     cnt[0] = '\0';
     char raw[MAX_DIM_LEN];
     while (fgets(raw, MAX_DIM_LEN, fp)) {
-        // leggiamo riga per riga il contenuto del file (ogni riga è registrata in raw) e ne facciamo la append in cnt
+        // leggiamo riga per riga il contenuto del file e lo mettiamo in cnt(contenuto)
         strcat(cnt, raw);
     }
     fclose(fp);
     last_w_size = strnlen(cnt, MAX_DIM_LEN);
-    // preparaione del comando per il server
+    // preparo il comando da mandare al server
     char buffer[DIM_MSG];
     memset(buffer, 0, DIM_MSG);
     sprintf(buffer, "writeFile;%s;%s;", path, cnt);
@@ -400,7 +400,7 @@ int writeFile(const char* path, const char* dir){
     char *save = NULL;
     token = strtok_r(request, ";", &save);
 
-    if (strcmp(token, "-1") == 0) { //l'operazione nel server non è andata a buon fine
+    if (strcmp(token, "-1") == 0) { //fallimento
         token = strtok_r(NULL, ";", &save);
         errno = (int) strtol(token, NULL, 10);
         return -1;
@@ -415,9 +415,9 @@ int writeFile(const char* path, const char* dir){
                 return -1;
             }
             char* save1 = NULL;
-            char* absPath = strtok_r(request,";",&save1); // la prima parte del messaggio del server è il path assoluto del file
-            char* fileCnt = strtok_r(NULL,";",&save1); // la seconda parte è invece il contenuto del file
-            // fileName conterrà solo il nome del file
+            char* absPath = strtok_r(request,";",&save1); // path assoluto del file
+            char* fileCnt = strtok_r(NULL,";",&save1); // contenuto file
+            // fileName contiene il nome del file e basta
             char* fileName = basename(absPath);
 
             if (dir!=NULL){   //salvataggio del file nella cartella specificata
@@ -443,12 +443,12 @@ int writeFile(const char* path, const char* dir){
     }
 }
 int appendToFile(const char* path, void* buf, size_t size, const char* dir){
-    if (connesso == 0){ // il client è disconnesso
+    if (connesso == 0){
         errno = ENOTCONN;
         return -1;
     }
 
-    if (dir != NULL){// se la directory non esiste ne viene creata una nuova
+    if (dir != NULL){// se la directory non esiste viene creata
         if (mkdir_p(dir) == -1){
             if (errno != EEXIST) return -1;
         }
@@ -457,7 +457,7 @@ int appendToFile(const char* path, void* buf, size_t size, const char* dir){
     cnt[0] = '\0';
     strncat(cnt,(char*)buf,size);
 
-    // preparazione del comando per il server
+    // comando da mandare al server
     char buffer[DIM_MSG];
     memset(buffer, 0, DIM_MSG);
     sprintf(buffer, "appendFile;%s;%s;", path, cnt);
@@ -474,7 +474,7 @@ int appendToFile(const char* path, void* buf, size_t size, const char* dir){
     char *save = NULL;
     token = strtok_r(request, ";", &save);
 
-    if (strcmp(token, "-1") == 0){ //l'operazione nel server non è andata a buon fine
+    if (strcmp(token, "-1") == 0){ //fallimento
         token = strtok_r(NULL, ";", &save);
         errno = (int) strtol(token, NULL, 10);
         return -1;
@@ -489,9 +489,9 @@ int appendToFile(const char* path, void* buf, size_t size, const char* dir){
             }
 
             char* save1 = NULL;
-            char* absPath = strtok_r(request,";",&save1); // la prima parte del messaggio del server è il path assoluto del file
-            char* fileCnt = strtok_r(NULL,";",&save1); // la seconda parte è invece il contenuto del file
-            // fileName conterrà solo il nome del file
+            char* absPath = strtok_r(request,";",&save1); // path assoluto del file
+            char* fileCnt = strtok_r(NULL,";",&save1); // contenuto del file
+            // fileName contiene il nome del file
             char* fileName = basename(absPath);
 
             if (dir!=NULL){   //salvataggio del file nella cartella specificata
@@ -564,7 +564,7 @@ int readNFiles(int N, const char* dir){
         return -1;
     }
 
-    if (dir != NULL){// se la directory non esiste ne viene creata una nuova
+    if (dir != NULL){// se la directory non esiste viene creata
         if (mkdir_p(dir) == -1){
             if (errno != EEXIST) return -1;
         }
@@ -596,7 +596,7 @@ int readNFiles(int N, const char* dir){
     int i;
     last_rN_size = 0;
 
-    //riceviamo i files secondo la quantità concordata
+    //leggo solo un numero di file indicato dal server
     for (i = 0; i < numFile; i++){
         //lettura di un file
         int dim = MAX_DIM_LEN + UNIX_PATH_MAX + 1;
@@ -608,9 +608,9 @@ int readNFiles(int N, const char* dir){
         }
 
         char* save1 = NULL;
-        char* absPath = strtok_r(readed,";",&save1); // la prima parte del messaggio del server è il path assoluto del file
-        char* fileCnt = strtok_r(NULL,";",&save1); // la seconda parte è invece il contenuto del file
-        // fileName conterrà solo il nome del file
+        char* absPath = strtok_r(readed,";",&save1); // il path assoluto del file
+        char* fileCnt = strtok_r(NULL,";",&save1); // contenuto del file
+        // fileName contiene  il nome del file
         char* fileName = basename(absPath);
         last_rN_size = last_rN_size + strnlen(fileCnt,MAX_DIM_LEN);
 
