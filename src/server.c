@@ -2324,7 +2324,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         // UPDATE DEL FILE DI LOG
         // s_writeFile : op/Thrd_id/6/(0|1)/File_Path/size/Rplc(0|1)/Rplc_no/Rplc_size
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"op/%lu/6/%d/%s/%lu/%d/%lu/%lu\n",pthread_self(), logResult, path, dimData, rpl, numReplace, replaceDim);
+        fprintf(fileLog,"thread %lu writeFile %d %s %lu %d %lu %lu\n",pthread_self(), logResult, path, dimData, rpl, numReplace, replaceDim);
         Pthread_mutex_unlock(&logLock);
         fileListFree(tmp);
     }
@@ -2391,7 +2391,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         // UPDATE DEL FILE DI LOG
         // appendJob_to_File : op/Thrd_id/7/(0|1)/File_Path/size/Rplc(0|1)/Rplc_no/Rplc_size
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"op/%lu/7/%d/%s/%lu/%d/%lu/%lu\n",pthread_self(), logResult, path, dimData, rpl, numReplace, replaceDim);
+        fprintf(fileLog,"thread %lu appendToFile %d %s %lu %d %lu %lu\n",pthread_self(), logResult, path, dimData, rpl, numReplace, replaceDim);
         Pthread_mutex_unlock(&logLock);
         fileListFree(tmp);
     }
@@ -2443,7 +2443,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         // UPDATE DEL FILE DI LOG
         // s_readFile : op/Thrd_id/4/(0|1)/File_Path/size
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"op/%lu/4/%d/%s/%ld\n",pthread_self(),logResult,path,size);
+        fprintf(fileLog,"thread %lu readFile %d %s %ld\n",pthread_self(),logResult,path,size);
         Pthread_mutex_unlock(&logLock);
         free(buf);
     }
@@ -2501,7 +2501,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         // UPDATE DEL FILE DI LOG
         // read_NFiles : op/Thrd_id/5/(0|1)/numRead/size
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"op/%lu/5/%d/%d/",pthread_self(),logResult,count);
+        fprintf(fileLog,"thread %lu readNFile %d %d\n",pthread_self(),logResult,count);
 
         file* curs = tmp->head;
         size_t tot_size = 0;
