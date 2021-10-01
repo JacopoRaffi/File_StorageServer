@@ -1,0 +1,4 @@
+numFileMax=100
+maxDim=33554432
+numThread=8
+hashDim=100

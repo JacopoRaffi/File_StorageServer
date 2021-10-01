@@ -1,0 +1,4 @@
+numFileMax=10000
+maxDim=134217728
+numThread=1
+hashDim=5000

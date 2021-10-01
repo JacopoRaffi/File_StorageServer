@@ -1,0 +1,5 @@
+numFileMax=10
+maxDim=1024
+numThread=1
+replace=LFU
+hashDim=7
