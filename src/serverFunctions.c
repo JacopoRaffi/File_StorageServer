@@ -632,11 +632,7 @@ int readNFiles(int N, const char* dir){
             }
         }
     }
-    // la api notifica al server che non vi saranno altre letture per questa operazione
-    if (writen(fdSocket,"0;",DIM_MSG) == -1){
-        errno = EREMOTEIO;
-        return -1;
-    }
+
     return numFile;
 }
 
