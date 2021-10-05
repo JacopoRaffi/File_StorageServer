@@ -17,9 +17,9 @@ do
 ./client -f ./serverSocket.sk -t 0 -W ./Test3/Cartella1/f2.txt -r ./Test3/Cartella1/f2.txt -l ./Test3/Cartella1/f2.txt -u ./Test3/Cartella1/f2.txt -c ./Test3/Cartella1/f2.txt &
 ./client -f ./serverSocket.sk -t 0 -W ./Test3/Cartella1/f3.txt -r ./Test3/Cartella1/f3.txt -l ./Test3/Cartella1/f3.txt -u ./Test3/Cartella1/f3.txt -c ./Test3/Cartella1/f3.txt &
 ./client -f ./serverSocket.sk -t 0 -W ./Test3/Cartella1/f4.txt -r ./Test3/Cartella1/f4.txt -l ./Test3/Cartella1/f4.txt -u ./Test3/Cartella1/f4.txt -c ./Test3/Cartella1/f4.txt &
-./client -f ./serverSocket.sk -t 0 -W ./Test3/Cartella1/f1.txt -r ./Test3/Cartella1/f1.txt -l ./Test3/Cartella1/f1.txt -u ./Test3/Cartella1/f1.txt -c ./Test3/Cartella1/f1.txt &
-./client -f ./serverSocket.sk -t 0 -W ./Test3/Cartella1/f2.txt -r ./Test3/Cartella1/f2.txt -l ./Test3/Cartella1/f2.txt -u ./Test3/Cartella1/f2.txt -c ./Test3/Cartella1/f2.txt &
-./client -f ./serverSocket.sk -t 0 -W ./Test3/Cartella1/f1.txt -r ./Test3/Cartella1/f1.txt -l ./Test3/Cartella1/f1.txt -u ./Test3/Cartella1/f1.txt -c ./Test3/Cartella1/f1.txt &
-./client -f ./serverSocket.sk -t 0 -W ./Test3/Cartella1/f2.txt -r ./Test3/Cartella1/f2.txt -l ./Test3/Cartella1/f2.txt -u ./Test3/Cartella1/f2.txt -c ./Test3/Cartella1/f2.txt &
+./client -f ./serverSocket.sk -t 0 -W ./Test3/Cartella1/f5.txt -r ./Test3/Cartella1/f5.txt -l ./Test3/Cartella1/f5.txt -u ./Test3/Cartella1/f5.txt -c ./Test3/Cartella1/f5.txt &
+./client -f ./serverSocket.sk -t 0 -W ./Test3/Cartella1/f6.txt -r ./Test3/Cartella1/f6.txt -l ./Test3/Cartella1/f6.txt -u ./Test3/Cartella1/f6.txt -c ./Test3/Cartella1/f6.txt &
+./client -f ./serverSocket.sk -t 0 -W ./Test3/Cartella1/f7.txt -r ./Test3/Cartella1/f7.txt -l ./Test3/Cartella1/f7.txt -u ./Test3/Cartella1/f7.txt -c ./Test3/Cartella1/f7.txt &
+./client -f ./serverSocket.sk -t 0 -W ./Test3/Cartella1/f8.txt -r ./Test3/Cartella1/f8.txt -l ./Test3/Cartella1/f8.txt -u ./Test3/Cartella1/f8.txt -c ./Test3/Cartella1/f8.txt &
 
 done
