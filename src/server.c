@@ -985,14 +985,14 @@ static fileList* hashReplaceLFU(hash* tbl, const char* path, size_t client){
         Pthread_mutex_lock(&(tmpList->mtx));
         if (hashRemove(storage, removedFile ->path) == NULL) {
             Pthread_mutex_unlock(&(tmpList->mtx));
-            return NULL; // il file rimovibile viene rimosso
+            return NULL;
         }
         Pthread_mutex_unlock(&(tmpList->mtx));
         killedFile = killedFile->prec;
         Pthread_mutex_lock(&(replaced -> mtx));
         if (fileListAddHead(replaced,copy) == -1) {
             Pthread_mutex_unlock(&(replaced->mtx));
-            return NULL; // la copia del file rimosso viene inserita nella lista di output
+            return NULL;
         }
         Pthread_mutex_unlock(&(replaced->mtx));
         Pthread_mutex_lock(&lockStats);
@@ -1227,7 +1227,7 @@ static int s_openFile (char* path, int flags, size_t client){
             Pthread_mutex_lock(&(tmpList->mtx));
 
             if (tmp->lockOwner == 0 || tmp->lockOwner == client){
-                if (cListRemoveNode(tmp->openClient, client) == -1){
+                if (cListAddHead(tmp->openClient, client) == -1){
                     Pthread_mutex_unlock(&(tmpList->mtx));
                     return -1;
                 }
@@ -1404,10 +1404,6 @@ static int s_readFile (char* path, char* buf, size_t* size, size_t client){
             dimRead = dimRead + (*size);
             Pthread_mutex_unlock(&lockStats);
 
-            if(cListRemoveNode(tmp->openClient,client) == -1){
-                Pthread_mutex_unlock(&tmpList->mtx);
-                return -1;
-            }
             tmp -> FIFOfile -> frequency++;
             clock_gettime(CLOCK_REALTIME, &(tmp -> FIFOfile -> timeUsage));
             Pthread_mutex_unlock(&tmpList->mtx);
@@ -1453,8 +1449,6 @@ static fileList* s_readNFile (int N, int* count, size_t client){
                     total = total + strlen(copy->data);
                     if(fileListAddHead(out, copy) == -1)
                         return NULL;
-                    if(cListRemoveNode(cursor->openClient,client) == -1)
-                        return NULL;
                     readNum++;
                 }
                 cursor = cursor->next;
@@ -1482,10 +1476,7 @@ static fileList* s_readNFile (int N, int* count, size_t client){
                         Pthread_mutex_lock(&storage->buckets[i]->mtx);
                         return NULL;
                     }
-                    if(cListRemoveNode(cursor->openClient,client) == -1){
-                        Pthread_mutex_lock(&storage->buckets[i]->mtx);
-                        return NULL;
-                    }
+
                     pkd++;
                     readNum++;
                     total = total + strlen(copy->data);
@@ -1649,10 +1640,6 @@ static int s_lockFile (char* path, size_t client){
         numLock++;
         Pthread_mutex_unlock(&lockStats);
 
-        if (cListRemoveNode(tmp->openClient, client) == -1) {
-            Pthread_mutex_unlock(&(tmpList->mtx));
-            return -1;
-        }
         tmp -> FIFOfile -> frequency++;
         clock_gettime(CLOCK_REALTIME, &(tmp -> FIFOfile -> timeUsage));
         Pthread_mutex_unlock(&(tmpList->mtx));
@@ -1684,10 +1671,6 @@ static int s_unlockFile (char* path, size_t client){
         numUnlock++;
         Pthread_mutex_unlock(&lockStats);
 
-        if(cListRemoveNode(tmp->openClient,client) == -1){
-            Pthread_mutex_unlock(&(tmpList->mtx));
-            return -1;
-        }
         tmp -> FIFOfile -> frequency++;
         clock_gettime(CLOCK_REALTIME, &(tmp -> FIFOfile -> timeUsage));
         Pthread_mutex_unlock(&(tmpList->mtx));
