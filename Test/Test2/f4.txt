@@ -1,0 +1,29 @@
+Caron, non ti crucciare:
+Vuolsi così colà dove si puote
+ciò che si vuole, e più non dimandare»Caron, non ti crucciare:
+Vuolsi così colà dove si puote
+ciò che si vuole, e più non dimandare»Caron, non ti crucciare:
+Vuolsi così colà dove si puote
+ciò che si vuole, e più non dimandare»Caron, non ti crucciare:
+Vuolsi così colà dove si puote
+ciò che si vuole, e più non dimandare»Caron, non ti crucciare:
+Vuolsi così colà dove si puote
+ciò che si vuole, e più non dimandare»Caron, non ti crucciare:
+Vuolsi così colà dove si puote
+ciò che si vuole, e più non dimandare»Caron, non ti crucciare:
+Vuolsi così colà dove si puote
+ciò che si vuole, e più non dimandare»Caron, non ti crucciare:
+Vuolsi così colà dove si puote
+ciò che si vuole, e più non dimandare»Caron, non ti crucciare:
+Vuolsi così colà dove si puote
+ciò che si vuole, e più non dimandare»Caron, non ti crucciare:
+Vuolsi così colà dove si puote
+ciò che si vuole, e più non dimandare»Caron, non ti crucciare:
+Vuolsi così colà dove si puote
+ciò che si vuole, e più non dimandare»./client -f ./serverSocket.sk -t 200 -W ./Test/Test2/f1.txt, f2.txt -D ./ShinoJ -p
+
+./client -f ./serverSocket.sk -t 200 -W ./Test/Test2/f3.txt -D ./ShinoJ -p./client -f ./serverSocket.sk -t 200 -W ./Test/Test2/f1.txt, f2.txt -D ./ShinoJ -p
+
+./client -f ./serverSocket.sk -t 200 -W ./Test/Test2/f3.txt -D ./ShinoJ -p./client -f ./serverSocket.sk -t 200 -W ./Test/Test2/f1.txt, f2.txt -D ./ShinoJ -p
+
+./client -f ./serverSocket.sk -t 200 -W ./Test/Test2/f3.txt -D ./ShinoJ -p
