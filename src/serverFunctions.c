@@ -176,14 +176,6 @@ int closeConnection(const char* sockname){
     }
 
     if (strcmp(socketName,sockname) == 0){
-        char buffer [DIM_MSG];
-        memset(buffer,0,DIM_MSG);
-        snprintf(buffer, DIM_MSG,"closeConnection");// il comando viene scritto sulla stringa buffer
-
-        if(writen(fdSocket, buffer, DIM_MSG) == -1){// il comando viene scritto nel canale con il server
-            errno = EREMOTEIO;
-            return -1;
-        }
         if (close(fdSocket) == -1) {// la connessione viene effettivamente chiusa
             errno = EREMOTEIO;
             return -1;

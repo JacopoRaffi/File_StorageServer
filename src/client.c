@@ -183,7 +183,6 @@ void addLast (node** lst, char* cmd, char* arg) {
     // il comando è stato trovato quindi rimozione
     if (found == 1){
         if (curr->arg != NULL){
-            //*arg = malloc(sizeof(curr->arg));
             *arg = malloc(sizeof(char)*(strlen(curr->arg)+1));
             strcpy(*arg, curr->arg);
         }
@@ -221,9 +220,6 @@ void freeList (node ** lst){
 int main (int argc, char * argv[]){
     char opt;
 
-    // stringhe per memorizzare gli argomenti dei comandi
-    char *farg, *warg, *Warg, *rarg, *Rarg, *darg, *Darg, *larg, *uarg, *targ, *carg;
-
     // flags per determinare che i comandi -p e -f non siano ripetuti
     int ff = 0;
     int pf = 0;
@@ -232,11 +228,12 @@ int main (int argc, char * argv[]){
     char* Dir = NULL; // cartella impostata per gli overflow in write
     time_ms = 0; // numero di secondi da attendere tra un comando ed un altro
 
+    char* farg;
     node* listCmd = NULL; // lista dei comandi richiesti
     char* resolvedPath = NULL; // stringa per il path assoluto
 
     // la lista dei comandi viene popolata secondo gli argomenti di avvio
-    while ((opt = (char)getopt(argc,argv,"hpf:w:W:u:l:D:r:R:d:t:c:")) != -1){
+    while ((opt = (char)getopt(argc,argv,"hpf:w:W:u:l:D:r:R:d:t:c:a:")) != -1){
         switch (opt){
             case 'h':{
                 printf("OPERAZIONI SUPPORTATE: \n");
@@ -246,8 +243,6 @@ int main (int argc, char * argv[]){
                 if (stampa==1)
                     printf("OP : -h (aiuto) Esito : successo\n");
                 freeList(&listCmd);
-                if (resolvedPath!=NULL)
-                    free(resolvedPath);
                 return 0;// il processo termina immediatamente dopo la stampa
                 }
                 break;
@@ -263,9 +258,9 @@ int main (int argc, char * argv[]){
             }
             case 'f':{
                 if (ff == 0){
-                    ff = 1;
                     farg = optarg;
-                    addLast(&listCmd, "f", farg);
+                    ff = 1;
+                    addLast(&listCmd, "f", optarg);
                 }
                 else{
                     printf("Standard ERROR : L'opzione -f può essere richiesta al più una volta\n");
@@ -275,54 +270,49 @@ int main (int argc, char * argv[]){
 
             // i seguenti comandi possono essere ripetuti più volte
             case 'w':{
-                warg = optarg;
-                addLast(&listCmd, "w", warg);
+                addLast(&listCmd, "w", optarg);
                 break;
             }
             case 'W':{
-                Warg = optarg;
-                addLast(&listCmd,"W",Warg);
+                addLast(&listCmd,"W",optarg);
                 break;
             }
             case 'D':{
-                Darg = optarg;
-                addLast(&listCmd, "D", Darg);
+                addLast(&listCmd, "D", optarg);
                 break;
             }
             case 'r':{
-                rarg = optarg;
-                addLast(&listCmd, "r", rarg);
+                addLast(&listCmd, "r", optarg);
                 break;
             }
             case 'R':{
-                Rarg = optarg;
-                addLast(&listCmd, "R", Rarg);
+                addLast(&listCmd, "R", optarg);
                 break;
             }
             case 'd':{
-                darg = optarg;
-                addLast(&listCmd, "d", darg);
+                addLast(&listCmd, "d", optarg);
                 break;
             }
             case 't':{
-                targ = optarg;
-                addLast(&listCmd, "t", targ);
+                addLast(&listCmd, "t", optarg);
                 break;
             }
             case 'l':{
-                larg = optarg;
-                addLast(&listCmd, "l", larg);
+                addLast(&listCmd, "l", optarg);
                 break;
             }
             case 'u':{
-                uarg = optarg;
-                addLast(&listCmd, "u", uarg);
+                addLast(&listCmd, "u", optarg);
                 break;
             }
             case 'c':{
-                carg = optarg;
-                addLast(&listCmd, "c", carg);
+                addLast(&listCmd, "c", optarg);
                 break;
+            }
+            case 'a':{
+                addLast(&listCmd, "a", optarg);
+                break;
+
             }
             case '?':
             {// comando non riconosciuto
@@ -338,7 +328,7 @@ int main (int argc, char * argv[]){
     }
 
     // controlli per la presenza delle opzioni non ripetibili: -h -p -f
-    char* arg=NULL;
+    char* arg = NULL;
     if (containCMD(&listCmd,"p",&arg) == 1){
         stampa = 1;
         printf("OP : -p (abilta stampe) Esito : successo\n");
@@ -349,12 +339,12 @@ int main (int argc, char * argv[]){
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME,&ts);
         ts.tv_sec = ts.tv_sec+60;
-        if (openConnection(farg,1000,ts)==-1){
-            if (stampa==1) printf("OP : -f (connessione) File : %s Esito : fallimento\n",farg);
+        if (openConnection(arg,1000,ts)==-1){
+            if (stampa == 1) printf("OP : -f (connessione) File : %s Esito : fallimento\n",arg);
             perror("Standard ERROR: apertura della connessione");
         }
         else{
-            if (stampa==1) printf("OP : -f (connessione) File : %s Esito : successo\n",farg);
+            if (stampa==1) printf("OP : -f (connessione) File : %s Esito : successo\n",arg);
         }
         msSleep(time_ms); // attesa tra due operazioni consecutive
     }
@@ -410,6 +400,83 @@ int main (int argc, char * argv[]){
             }
 
         }
+        else if (strcmp(curr->cmd, "a") == 0){ //append -> a fileName(arg),contenutoDaAppendere(stringa)
+            Dir = NULL;
+            if (curr->next != NULL){
+                if(strcmp(curr->next->cmd,"D") == 0)
+                    Dir = curr->next->arg;
+            }
+            char* saveA = NULL;
+            char* file = strtok_r(curr->arg, ",", &saveA);
+
+            if ((resolvedPath = realpath(file,resolvedPath)) == NULL){
+                if (stampa == 1)
+                    printf("OP : -W (scrivi file) File : %s Esito : fallimento\n",file);
+                perror("Standard ERROR: Il file non esiste\n");
+            }
+
+            char* cnt = strtok_r(curr -> arg, ",", &saveA);
+            size_t size = strlen(cnt);
+            struct stat info_file;
+            stat(resolvedPath,&info_file);
+
+            if (S_ISREG(info_file.st_mode)){
+                errno = 0;
+
+                if (openFile(resolvedPath,1) == -1){
+                    if (errno == ENOENT){
+                        if (openFile(resolvedPath,3) == -1){
+                            if (stampa==1) printf("OP : -W (scrivi file) File : %s Esito : fallimento\n",file);
+                            perror("Standard ERROR: apertura del file fallita");
+                        }
+                        else{// scrittura nel file appena creato all'interno del server
+                            //scrittura nel file
+                            if (appendToFile(resolvedPath, cnt, size, Dir) == -1){
+                                if (stampa==1)
+                                    printf("OP : -a (scrivi file) File : %s Esito : fallimento\n",file);
+                                perror("Standard ERROR: scrittura nel  file");
+                            }
+                            if (stampa==1)
+                                printf("OP : -a (scrivi file) File : %s Dimensione totale della scrittura: %lu Esito : successo\n",file,get_last_w_size());
+                            //chiusura del file
+                            if (closeFile(resolvedPath)==-1){
+                                if (stampa==1)
+                                    printf("OP : -a (scrivi file) File : %s Esito : fallimento\n",file);
+                                perror("Standard ERROR: chiusura del file");
+                            }
+                        }
+                    }
+                    else{
+                        if (stampa==1)
+                            printf("OP : -a (scrivi file) File : %s Esito : fallimento\n",file);
+                        perror("Standard ERROR: apertura del file fallita");
+                    }
+                }
+                else{// scrittura nel file aperto all'interno del server e già esistente in esso
+                    //scrittura nel file
+                    if (appendToFile(resolvedPath, cnt, size, Dir) == -1){
+                        if (stampa==1)
+                            printf("OP : -a (scrivi file) File : %s Esito : fallimento\n",file);
+                        perror("Standard ERROR: scrittura nel  file");
+                    }
+                    if (stampa == 1)
+                        printf("OP : -a (scrivi file) File : %s Dimensione totale della scrittura: %lu Esito : successo\n",file,get_last_w_size());
+                    //chiusura del file
+                    if (closeFile(resolvedPath)==-1){
+                        if (stampa==1)
+                            printf("OP : -a (scrivi file) File : %s Esito : fallimento\n",file);
+                        perror("Standard ERROR: chiusura del file");
+                    }
+                }
+                if (resolvedPath!=NULL) free(resolvedPath);
+                resolvedPath = NULL;
+            }
+            else{
+                if (stampa == 1)
+                    printf("OP : -a (scrivi file) File : %s Esito : fallimento\n",file);
+                printf("Standard ERROR: %s non e' un file regolare\n",file);
+            }
+        }
         else if (strcmp(curr->cmd,"W") == 0){
                 Dir = NULL;
                 if (curr->next != NULL){
@@ -419,13 +486,15 @@ int main (int argc, char * argv[]){
                 char* save2 = NULL;
                 char* token2 = strtok_r(curr->arg,",",&save2);
 
+
+
                 while(token2){
                     char* file = token2;
                     // per ogni file passato come argomento sarà eseguita la serie "open-write-close"
 
                     if ((resolvedPath = realpath(file,resolvedPath)) == NULL){
                         if (stampa==1) printf("OP : -W (scrivi file) File : %s Esito : fallimento\n",file);
-                        printf("Standard ERROR: Il file %s non esiste\n",file);
+                        perror("Standard ERROR: Il file non esiste\n");
                     }
                     else{
                         struct stat info_file;
@@ -580,7 +649,6 @@ int main (int argc, char * argv[]){
                 }
                 token3 = strtok_r(NULL, ",", &save3);
             }
-            //if (token3!=NULL) free(token3);
         }
         else if (strcmp(curr->cmd,"R") == 0){
             dir = NULL;

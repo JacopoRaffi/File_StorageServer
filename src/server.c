@@ -7,8 +7,8 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <syscall.h>
 #include <sys/un.h>
-#include <assert.h>
 
 #define DIM_MSG 2048   // dimensione dei messaggi tra client e server
 #define MAX_DIM_LEN 1024 // grandezza massima del contenuto di un file
@@ -19,6 +19,9 @@
 #define FALSE 0
 #define SOFT_END 2
 #define HARD_END 1
+
+#define gettid() ((pid_t)syscall(SYS_gettid))
+
 
 FILE* fileLog;
 pthread_mutex_t logLock = PTHREAD_MUTEX_INITIALIZER;
@@ -167,7 +170,6 @@ static void cListFree (cList* lst){
         errno = EINVAL;
         return;
     }
-
     clNode* tmp = lst -> head;
     while (tmp != NULL){
         lst->head = lst->head->next;
@@ -877,7 +879,6 @@ void swap ( size_t* a, size_t* b, char* aa, char* bb){
 
 FIFOnode* partition( FIFOnode* l, FIFOnode* h){
     size_t x = h->frequency;
-
     FIFOnode* i = l->prec;
 
     FIFOnode* j;
@@ -1141,7 +1142,6 @@ static int updateMax (fd_set set, int fdmax){
     for(i = (fdmax-1); i >= 0; i--)
         if (FD_ISSET(i, &set))
             return i;
-    assert(1 == 0);
     return -1;
 }
 
@@ -1807,7 +1807,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
 
         // UPDATE DEL FILE DI LOG
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"thread %lu openFile %d %s\n", pthread_self(), res, path);
+        fprintf(fileLog,"thread %lu openFile %d %s\n", gettid(), res, path);
         Pthread_mutex_unlock(&logLock);
     }
     else
@@ -1834,7 +1834,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         }
 
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"thread %lu closeFile %d %s\n",pthread_self(), res, path);
+        fprintf(fileLog,"thread %lu closeFile %d %s\n",gettid(), res, path);
         Pthread_mutex_unlock(&logLock);
     }
     else
@@ -1863,7 +1863,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             return;
         }
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"thread %lu lockFile %d %s\n",pthread_self(), res, path);
+        fprintf(fileLog,"thread %lu lockFile %d %s\n",gettid(), res, path);
         Pthread_mutex_unlock(&logLock);
     }
     else
@@ -1890,7 +1890,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             return;
         }
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"thread %lu unlockFile %d %s\n", pthread_self(), res, path);
+        fprintf(fileLog,"thread %lu unlockFile %d %s\n", gettid(), res, path);
         Pthread_mutex_unlock(&logLock);
     }
     else
@@ -1919,7 +1919,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         }
 
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"thread %lu removeFile %d %s\n", pthread_self(), res, path);
+        fprintf(fileLog,"thread %lu removeFile %d %s\n", gettid(), res, path);
         Pthread_mutex_unlock(&logLock);
     }
     else
@@ -1986,7 +1986,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             cursor = cursor->next;
         }
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"thread %lu writeFile %d %s %lu %d %lu %lu\n",pthread_self(), logResult, path, dimData, rpl, numReplace, replaceDim);
+        fprintf(fileLog,"thread %lu writeFile %d %s %lu %d %lu %lu\n",gettid(), logResult, path, dimData, rpl, numReplace, replaceDim);
         Pthread_mutex_unlock(&logLock);
         fileListFree(tmp);
     }
@@ -2049,7 +2049,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         }
 
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"thread %lu appendToFile %d %s %lu %d %lu %lu\n",pthread_self(), logResult, path, dimData, rpl, numReplace, replaceDim);
+        fprintf(fileLog,"thread %lu appendToFile %d %s %lu %d %lu %lu\n",gettid(), logResult, path, dimData, rpl, numReplace, replaceDim);
         Pthread_mutex_unlock(&logLock);
         fileListFree(tmp);
     }
@@ -2090,7 +2090,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             return;
         }
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"thread %lu readFile %d %s %ld\n",pthread_self(),logResult,path,size);
+        fprintf(fileLog,"thread %lu readFile %d %s %ld\n",gettid(),logResult,path,size);
         Pthread_mutex_unlock(&logLock);
         free(buf);
     }
@@ -2144,7 +2144,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         }
 
         Pthread_mutex_lock(&logLock);
-        fprintf(fileLog,"thread %lu readNFile %d %d ",pthread_self(),logResult,count);
+        fprintf(fileLog,"thread %lu readNFile %d %d ",gettid(),logResult,count);
 
         file* curs = tmp->head;
         size_t tot_size = 0;
@@ -2157,18 +2157,6 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         fprintf(fileLog,"%lu\n",tot_size);
         Pthread_mutex_unlock(&logLock);
         fileListFree(tmp);
-    }
-    else
-    if (strcmp(token,"closeConnection") == 0){// il client è disconnesso, il worker attende il prossimo
-        *endJob = 1;
-        if (write(pipeFD, &clientFD, sizeof(clientFD)) == -1){
-            perror("Worker : scrittura nella pipe");
-            exit(EXIT_FAILURE);
-        }
-        if (write(pipeFD, endJob, sizeof(*endJob)) == -1){
-            perror("Worker : scrittura nella pipe");
-            exit(EXIT_FAILURE);
-        }
     }
     else{
         // funzione non implementata
@@ -2210,7 +2198,7 @@ static void* worker (void* arg){
             //il worker esegue tutte le richieste del client
             int len = readn(clientFD, quest, DIM_MSG);
 
-            if (len == -1){// il client è disconnesso
+            if (len == -1 || len == 0){// il client è disconnesso
                 endJob = 1;
                 if (write(pipeFD, &clientFD, sizeof(clientFD)) == -1){
                     perror("Worker : scrittura nella pipe");
@@ -2222,8 +2210,7 @@ static void* worker (void* arg){
                 }
             }
             else{// richiesta del client ricevuta correttamente
-                if (len != 0)
-                    job(quest, clientFD, pipeFD, &endJob);
+                job(quest, clientFD, pipeFD, &endJob);
             }
         }
     }
