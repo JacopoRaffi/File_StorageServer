@@ -882,7 +882,7 @@ FIFOnode* partition( FIFOnode* l, FIFOnode* h){
 
     FIFOnode* j;
     for (j = l; j != h; j = j->next){
-        if (j->frequency <= x){
+        if (j->frequency >= x){
             i = (i == NULL) ? l : i->next;
 
             swap(&(i->frequency), &(j->frequency), i->path, j->path);
