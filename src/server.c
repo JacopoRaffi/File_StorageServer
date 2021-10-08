@@ -10,13 +10,15 @@
 #include <sys/un.h>
 #include <assert.h>
 
-
 #define DIM_MSG 2048   // dimensione dei messaggi tra client e server
 #define MAX_DIM_LEN 1024 // grandezza massima del contenuto di un file
 #define UNIX_PATH_MAX 108 /* man 7 unix */
 #define SOCKET_NAME "./serverSocket.sk"  // nome di default per il socket
 #define LOG_NAME "./log.txt"    // nome di default per il file di log
 #define TRUE 1
+#define FALSE 0
+#define SOFT_END 2
+#define HARD_END 1
 
 FILE* fileLog;
 pthread_mutex_t logLock = PTHREAD_MUTEX_INITIALIZER;
@@ -1129,9 +1131,9 @@ static int isNumber(const char* s, long* n){
 //gestore dei segnali SIGHUP, SIGINT, SIGQUIT
 static void sigHandler (int sgnl){
     if (sgnl == SIGINT || sgnl == SIGQUIT)
-        end = 1; //terminazione bruta
+        end = HARD_END; //terminazione bruta
     else if (sgnl == SIGHUP)
-        end = 2; //terminazione soft
+        end = SOFT_END; //terminazione soft
 }
 //aggiorna il fd massimo(utile per la select)
 static int updateMax (fd_set set, int fdmax){
@@ -2232,7 +2234,7 @@ int main(int argc, char* argv[]){
     int output;
     int i;
     clientList = cListCreate();
-    int softEnd = 0;
+    int softEnd = FALSE;
     char socket_name[100];
     //valori di default
     numFileMax = 20;
@@ -2469,8 +2471,8 @@ int main(int argc, char* argv[]){
         while (TRUE){
             rdSet = set;//ripristino il set di partenza
             if (select(numFD+1,&rdSet,NULL,NULL,NULL) == -1){//gestione errore
-                if (end == 1) break;//chiusura bruta
-                else if (end == 2) { //chiusura soft
+                if (end == HARD_END) break;//chiusura bruta
+                else if (end == SOFT_END) { //chiusura soft
                     if (numConnectionsCurr==0) break;
                     else {
                         printf("Chiusura Soft\n");
@@ -2494,9 +2496,9 @@ int main(int argc, char* argv[]){
                 if (FD_ISSET(fd,&rdSet)){
                     if (fd == socketFD){ //il socket è pronto per accettare una nuova richiesta di connessine
                         if ((clientFD = accept(socketFD,NULL,0)) == -1){
-                            if (end == 1) 
+                            if (end == HARD_END)
                                 break;//terminazione bruta
-                            else if (end == 2) {//terminazione soft
+                            else if (end == SOFT_END) {//terminazione soft
                                 if (numConnectionsCurr == 0)
                                     break;
                             }else {
@@ -2531,7 +2533,7 @@ int main(int argc, char* argv[]){
                                 numConnectionsCurr--;//aggiornamento statistiche
                                 if (end == 2 && numConnectionsCurr == 0){
                                     printf("Terminazione Soft\n");
-                                    softEnd = 1;
+                                    softEnd = TRUE;
                                     break;
                                 }
                             }
@@ -2559,7 +2561,7 @@ int main(int argc, char* argv[]){
                         }
                 }
             }
-            if (softEnd == 1)
+            if (softEnd == TRUE)
                 break;
         }
 

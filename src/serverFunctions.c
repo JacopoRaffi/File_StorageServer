@@ -10,11 +10,13 @@
 #include <libgen.h>
 #include "../includes/api.h"
 
+#define TRUE 1
+#define FALSE 0
 #define DIM_MSG 2048
 #define MAX_DIM_LEN 1024 //grandezza massima contenuto file
 #define UNIX_PATH_MAX 108 /* man 7 unix */
 
-int connesso = 0;//indica se il client è connesso
+int connesso = FALSE;//indica se il client è connesso
 size_t last_w_size = 0;
 size_t last_rN_size = 0;
 int fdSocket; //fd del socket
@@ -163,12 +165,12 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
         return -1;
     }
 
-    connesso = 1;// la flag di connessione viene settata ad 1
+    connesso = TRUE;// la flag di connessione viene settata ad 1
     strcpy(socketName, sockname);// il nome del socket viene memorizzato in una variabile globale
     return 0;
 }
 int closeConnection(const char* sockname){
-    if (connesso == 0) {
+    if (!connesso) {
         errno = EPERM;
         return -1;
     }
@@ -195,7 +197,7 @@ int closeConnection(const char* sockname){
 }
 int openFile(const char* path, int flags) {
 
-    if (connesso == 0){
+    if (!connesso){
         errno = ENOTCONN;
         return -1;
     }
@@ -227,7 +229,7 @@ int openFile(const char* path, int flags) {
     }
 }
 int closeFile(const char* path) {
-    if (connesso == 0) {
+    if (!connesso) {
         errno = ENOTCONN;
         return -1;
     }
@@ -260,7 +262,7 @@ int closeFile(const char* path) {
 }
 int removeFile(const char* path) {
 
-    if (connesso == 0) {
+    if (!connesso) {
         errno = ENOTCONN;
         return -1;
     }
@@ -292,7 +294,7 @@ int removeFile(const char* path) {
     }
 }
 int lockFile(const char* path){
-    if (connesso == 0){
+    if (!connesso){
         errno = ENOTCONN;
         return -1;
     }
@@ -324,7 +326,7 @@ int lockFile(const char* path){
     }
 }
 int unlockFile(const char* path){
-    if (connesso == 0) {
+    if (!connesso) {
         errno = ENOTCONN;
         return -1;
     }
@@ -356,7 +358,7 @@ int unlockFile(const char* path){
     }
 }
 int writeFile(const char* path, const char* dir){
-    if (connesso == 0){
+    if (!connesso){
         errno = ENOTCONN;
         return -1;
     }
@@ -443,7 +445,7 @@ int writeFile(const char* path, const char* dir){
     }
 }
 int appendToFile(const char* path, void* buf, size_t size, const char* dir){
-    if (connesso == 0){
+    if (!connesso){
         errno = ENOTCONN;
         return -1;
     }
@@ -517,7 +519,7 @@ int appendToFile(const char* path, void* buf, size_t size, const char* dir){
     }
 }
 int readFile(const char* path, void** buf, size_t* size){
-    if (connesso == 0){
+    if (!connesso){
         errno = ENOTCONN;
         return -1;
     }
@@ -559,7 +561,7 @@ int readFile(const char* path, void** buf, size_t* size){
     }
 }
 int readNFiles(int N, const char* dir){
-    if (connesso==0){
+    if (!connesso){
         errno=ENOTCONN;
         return -1;
     }
