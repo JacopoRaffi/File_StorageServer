@@ -1,3 +1,0 @@
-max_no=100
-max_size=33554432
-thread_no=8
