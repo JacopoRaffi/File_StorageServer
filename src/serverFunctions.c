@@ -16,6 +16,14 @@
 #define MAX_DIM_LEN 1024 //grandezza massima contenuto file
 #define UNIX_PATH_MAX 108 /* man 7 unix */
 
+#define SYSCALL(sc, str, err) \
+                    if((sc) == -1){ \
+                        perror(str);\
+                        errno = err;\
+                        return -1;\
+                    }
+
+
 int connesso = FALSE;//indica se il client è connesso
 size_t last_w_size = 0;
 size_t last_rN_size = 0;
@@ -148,11 +156,7 @@ int openConnection(const char* sockname, int msec, const struct timespec abstime
     strncpy(sa.sun_path, sockname, UNIX_PATH_MAX);
     sa.sun_family = AF_UNIX;
 
-    if ((fdSocket = socket(AF_UNIX, SOCK_STREAM, 0)) == -1){// otteniamo il file descriptor del socket
-        errno = EINVAL;
-        perror("Standard ERROR: socket");
-        return -1;
-    }
+    SYSCALL(fdSocket = socket(AF_UNIX, SOCK_STREAM, 0), "STANDARD ERROR: socket", EINVAL)
 
     struct timespec time;
     while (connect(fdSocket,(struct sockaddr*)&sa,sizeof(sa)) == -1 && compareTime(time, abstime) == -1){// quando la connessione fallisce e siamo ancora entro il tempo massimo facciamo un' attesa di msec secondi
@@ -176,10 +180,7 @@ int closeConnection(const char* sockname){
     }
 
     if (strcmp(socketName,sockname) == 0){
-        if (close(fdSocket) == -1) {// la connessione viene effettivamente chiusa
-            errno = EREMOTEIO;
-            return -1;
-        }
+        SYSCALL(close(fdSocket), "STANDARD ERROR: chiusura socket", EREMOTEIO)
         return 0;
     }
     else{// il socket parametro non è valido
@@ -199,14 +200,8 @@ int openFile(const char* path, int flags) {
     memset(buffer,0,DIM_MSG);
     snprintf(buffer, DIM_MSG,"openFile;%s;%d;",path, flags);// il comando viene scritto sulla stringa buffer
 
-    if(writen(fdSocket, buffer, DIM_MSG) == -1){// il comando viene scritto nel canale con il server
-        errno = EREMOTEIO;
-        return -1;
-    }
-    if(readn(fdSocket, request, DIM_MSG) == -1){// lettura risposta server
-        errno = EREMOTEIO;
-        return -1;
-    }
+    SYSCALL(writen(fdSocket, buffer, DIM_MSG), "STANDARD ERROR: writen", EREMOTEIO)
+    SYSCALL(readn(fdSocket, request, DIM_MSG), "STANDARD ERROR: readn", EREMOTEIO)
 
     char* token;
     token = strtok_r(request,";", &save);
@@ -229,15 +224,9 @@ int closeFile(const char* path) {
     char buffer[DIM_MSG];
     memset(buffer,0,DIM_MSG);
     sprintf(buffer, "closeFile;%s;", path);
-    fflush(stdout);
-    if(writen(fdSocket, buffer, DIM_MSG) == -1){
-        errno = EREMOTEIO;
-        return -1;
-    }
-    if(readn(fdSocket, request, DIM_MSG) == -1){
-        errno = EREMOTEIO;
-        return -1;
-    }
+
+    SYSCALL(writen(fdSocket, buffer, DIM_MSG), "STANDARD ERROR: writen", EREMOTEIO)
+    SYSCALL(readn(fdSocket, request, DIM_MSG), "STANDARD ERROR: readn", EREMOTEIO)
 
     char* token;
     char* save = NULL;
@@ -263,14 +252,8 @@ int removeFile(const char* path) {
     memset(buffer,0,DIM_MSG);
     sprintf(buffer, "removeFile;%s;", path);
 
-    if(writen(fdSocket, buffer, DIM_MSG) == -1){
-        errno = EREMOTEIO;
-        return -1;
-    }
-    if(readn(fdSocket, request, DIM_MSG) == -1){
-        errno = EREMOTEIO;
-        return -1;
-    }
+    SYSCALL(writen(fdSocket, buffer, DIM_MSG), "STANDARD ERROR: writen", EREMOTEIO)
+    SYSCALL(readn(fdSocket, request, DIM_MSG), "STANDARD ERROR: readn", EREMOTEIO)
 
     char* token;
     char* save = NULL;
@@ -295,14 +278,8 @@ int lockFile(const char* path){
     memset(buffer,0,DIM_MSG);
     sprintf(buffer, "lockFile;%s;", path);
 
-    if(writen(fdSocket, buffer, DIM_MSG) == -1){
-        errno = EREMOTEIO;
-        return -1;
-    }
-    if(readn(fdSocket, request, DIM_MSG) == -1){
-        errno = EREMOTEIO;
-        return -1;
-    }
+    SYSCALL(writen(fdSocket, buffer, DIM_MSG), "STANDARD ERROR: writen", EREMOTEIO)
+    SYSCALL(readn(fdSocket, request, DIM_MSG), "STANDARD ERROR: readn", EREMOTEIO)
 
     char* token;
     char* save = NULL;
@@ -327,14 +304,8 @@ int unlockFile(const char* path){
     memset(buffer,0,DIM_MSG);
     sprintf(buffer, "unlockFile;%s", path);
 
-    if(writen(fdSocket, buffer, DIM_MSG) == -1){
-        errno = EREMOTEIO;
-        return -1;
-    }
-    if(readn(fdSocket, request, DIM_MSG) == -1){
-        errno = EREMOTEIO;
-        return -1;
-    }
+    SYSCALL(writen(fdSocket, buffer, DIM_MSG), "STANDARD ERROR: writen", EREMOTEIO)
+    SYSCALL(readn(fdSocket, request, DIM_MSG), "STANDARD ERROR: readn", EREMOTEIO)
 
     char* token;
     char* save = NULL;
@@ -357,7 +328,8 @@ int writeFile(const char* path, const char* dir){
 
     if (dir != NULL){// se la directory non esiste viene creata
         if (mkdir_p(dir) == -1){
-            if (errno != EEXIST) return -1;
+            if (errno != EEXIST)
+                return -1;
         }
     }
 
@@ -381,14 +353,8 @@ int writeFile(const char* path, const char* dir){
     memset(buffer, 0, DIM_MSG);
     sprintf(buffer, "writeFile;%s;%s;", path, cnt);
 
-    if (writen(fdSocket, buffer, DIM_MSG) == -1) {
-        errno = EREMOTEIO;
-        return -1;
-    }
-    if (readn(fdSocket, request, DIM_MSG) == -1) {
-        errno = EREMOTEIO;
-        return -1;
-    }
+    SYSCALL(writen(fdSocket, buffer, DIM_MSG), "STANDARD ERROR: writen", EREMOTEIO)
+    SYSCALL(readn(fdSocket, request, DIM_MSG), "STANDARD ERROR: readn", EREMOTEIO)
 
     char *token;
     char *save = NULL;
@@ -404,10 +370,7 @@ int writeFile(const char* path, const char* dir){
         int i = 0;
 
         while (i < remain){
-            if (readn(fdSocket, request, DIM_MSG) == -1){
-                errno = EREMOTEIO;
-                return -1;
-            }
+            SYSCALL(readn(fdSocket, request, DIM_MSG), "STANDARD ERROR: readn", EREMOTEIO)
             char* save1 = NULL;
             char* absPath = strtok_r(request,";",&save1); // path assoluto del file
             char* fileCnt = strtok_r(NULL,";",&save1); // contenuto file
@@ -456,14 +419,9 @@ int appendToFile(const char* path, void* buf, size_t size, const char* dir){
     memset(buffer, 0, DIM_MSG);
     sprintf(buffer, "appendFile;%s;%s;", path, cnt);
 
-    if (writen(fdSocket, buffer, DIM_MSG) == -1) {
-        errno = EREMOTEIO;
-        return -1;
-    }
-    if (readn(fdSocket, request, DIM_MSG) == -1) {
-        errno = EREMOTEIO;
-        return -1;
-    }
+    SYSCALL(writen(fdSocket, buffer, DIM_MSG), "STANDARD ERROR: writen", EREMOTEIO)
+    SYSCALL(readn(fdSocket, request, DIM_MSG), "STANDARD ERROR: readn", EREMOTEIO)
+
     char *token;
     char *save = NULL;
     token = strtok_r(request, ";", &save);
@@ -477,10 +435,7 @@ int appendToFile(const char* path, void* buf, size_t size, const char* dir){
         int remain = (int) strtol(token, NULL, 10);
         int i = 0;
         while (i < remain){
-            if (readn(fdSocket, request, DIM_MSG) == -1){
-                errno = EREMOTEIO;
-                return -1;
-            }
+            SYSCALL(readn(fdSocket, request, DIM_MSG), "STANDARD ERROR: readn", EREMOTEIO)
 
             char* save1 = NULL;
             char* absPath = strtok_r(request,";",&save1); // path assoluto del file
@@ -520,14 +475,8 @@ int readFile(const char* path, void** buf, size_t* size){
     memset(buffer,0,DIM_MSG);
     sprintf(buffer, "readFile;%s;",path);
 
-    if(writen(fdSocket, buffer, DIM_MSG) == -1){
-        errno = EREMOTEIO;
-        return -1;
-    }
-    if(readn(fdSocket, request, DIM_MSG) == -1){
-        errno = EREMOTEIO;
-        return -1;
-    }
+    SYSCALL(writen(fdSocket, buffer, DIM_MSG), "STANDARD ERROR: writen", EREMOTEIO)
+    SYSCALL(readn(fdSocket, request, DIM_MSG), "STANDARD ERROR: readn", EREMOTEIO)
 
     char* token;
     char* save = NULL;
@@ -564,22 +513,15 @@ int readNFiles(int N, const char* dir){
         }
     }
 
-    char cmd [DIM_MSG];
-    memset(cmd,0,DIM_MSG);
-    sprintf(cmd, "readNFiles;%d;",N);
-    if (writen(fdSocket,cmd,DIM_MSG) == -1){
-        errno = EREMOTEIO;
-        return -1;
-    }
+    char buffer [DIM_MSG];
+    memset(buffer,0,DIM_MSG);
+    sprintf(buffer, "readNFiles;%d;",N);
 
-    char request1 [DIM_MSG];
-    memset(request1,0,DIM_MSG);
-    if(readn(fdSocket,request1,DIM_MSG)==-1){
-        errno = EREMOTEIO;
-        return -1;
-    }
+    SYSCALL(writen(fdSocket, buffer, DIM_MSG), "STANDARD ERROR: writen", EREMOTEIO)
+    SYSCALL(readn(fdSocket, request, DIM_MSG), "STANDARD ERROR: readn", EREMOTEIO)
+
     char* save = NULL;
-    char* token = strtok_r(request1,";",&save);
+    char* token = strtok_r(request,";",&save);
     if (strcmp(token,"-1") == 0){ //operazione fallita
         token = strtok_r(NULL,";",&save);
         errno = (int)strtol(token, NULL, 10);
@@ -629,5 +571,3 @@ int readNFiles(int N, const char* dir){
 
     return numFile;
 }
-
-// UPDATE: commenti aggiornati

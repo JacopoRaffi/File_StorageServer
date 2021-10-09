@@ -20,9 +20,18 @@
 #define SOFT_END 2
 #define HARD_END 1
 
+#ifdef SYS_gettid
 #define gettid() ((pid_t)syscall(SYS_gettid))
+#else
+#define gettid() (pthread_self())
+#endif
 
-
+//creata per evitare di riscrivere sempre lo stesso pezzo di codice
+#define SYSCALL_EXITF(sc, str) \
+                         if((sc) == -1){ \
+                         perror(str);    \
+                         exit(EXIT_FAILURE); \
+                         }
 FILE* fileLog;
 pthread_mutex_t logLock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -2218,9 +2227,12 @@ static void* worker (void* arg){
 }
 
 int main(int argc, char* argv[]){
-    int output;
-    int i;
     clientList = cListCreate();
+
+    if(clientList == NULL){
+        exit(EXIT_FAILURE);
+    }
+
     int softEnd = FALSE;
     char socket_name[100];
     //valori di default
@@ -2319,205 +2331,142 @@ int main(int argc, char* argv[]){
 
     printf("Server INFO: socket_name:%s / num_thread:%lu / max_files:%lu / maxDIm:%lu\n", socket_name, numThread, numFileMax, maxDIm);
 
-    {
-        sigset_t set;
-        output = sigfillset(&set);
-        if (output == -1){
-            perror("sigfillset");
-            exit(EXIT_FAILURE);
-        }
-        output = pthread_sigmask(SIG_SETMASK, &set, NULL);
-        if (output == -1){
-            perror("pthread_sigmask");
-            exit(EXIT_FAILURE);
-        }
+    sigset_t set;
+    SYSCALL_EXITF(sigfillset(&set), "sigfillsett errror")
+    SYSCALL_EXITF(pthread_sigmask(SIG_SETMASK, &set, NULL), "pthread sigmask error")
 
-        struct sigaction s;
-        memset(&s, 0, sizeof(s));
-        s.sa_handler = sigHandler;
+    struct sigaction s;
+    memset(&s, 0, sizeof(s));
+    s.sa_handler = sigHandler;
+    SYSCALL_EXITF(sigaction(SIGINT, &s, NULL), "sigaction SIGINT error")
+    SYSCALL_EXITF(sigaction(SIGQUIT, &s, NULL), "sigaction SIGQUIT error")
+    SYSCALL_EXITF(sigaction(SIGHUP, &s, NULL), "sigaction SIGHUP error")
 
-        output = sigaction(SIGINT, &s, NULL);  // imposto l'handler per SIGINT
-        if (output == -1){
-            perror("sigaction");
-            exit(EXIT_FAILURE);
-        }
-        output = sigaction(SIGQUIT, &s, NULL);  // imposto l'handler per SIGQUIT
-        if (output == -1){
-            perror("sigaction");
-            exit(EXIT_FAILURE);
-        }
-        output = sigaction(SIGHUP, &s, NULL);  // imposto l'handler per SIGHUP
-        if (output == -1){
-            perror("sigaction");
-            exit(EXIT_FAILURE);
-        }
+    s.sa_handler = SIG_IGN;
+    SYSCALL_EXITF(sigaction(SIGPIPE, &s, NULL), "sigaction SIGPIPE error")
 
-        // gestisco SIGPIPE ignorandolo
-        s.sa_handler = SIG_IGN;
-        output = sigaction(SIGPIPE, &s, NULL);
-        if (output == -1){
-            perror("sigaction");
-            exit(EXIT_FAILURE);
-        }
+    SYSCALL_EXITF(sigemptyset(&set), "sigemptyset error")
+    SYSCALL_EXITF(pthread_sigmask(SIG_SETMASK, &set, NULL), "pthread-signmask error")
 
-        // setto la maschera del thread a 0
-        output = sigemptyset(&set);
-        if (output == -1){
-            perror("sigemptyset");
-            exit(EXIT_FAILURE);
-        }
-        output = pthread_sigmask(SIG_SETMASK, &set, NULL);
-        if (output == -1){
-            perror("pthread_sigmask");
-            fflush(stdout);
-            exit(EXIT_FAILURE);
-        }
+    storage = hashCreate(numLists);
+    if (storage == NULL){
+        exit(EXIT_FAILURE);
+    }
+    queue = FIFOcreate();
+    if (queue == NULL){
+        exit(EXIT_FAILURE);
     }
 
-    {
-        storage = hashCreate(numLists);
-        if (storage == NULL){
-            errno = ENOMEM;
-            return -1;
-        }
+    fileLog = fopen(LOG_NAME,"w");
+    if(fileLog == NULL){
+        exit(EXIT_FAILURE);
+    }
 
-        queue = FIFOcreate();
-        if (queue == NULL){
-            errno = ENOMEM;
-            return -1;
-        }
+    fprintf(fileLog,"INIZIO\n");
 
+    int pip[2];
+    SYSCALL_EXITF(pipe(pip), "creazione pipe error")
 
-        fileLog = fopen(LOG_NAME,"w");
-        fprintf(fileLog,"INIZIO\n");
+    // thread pool
+    pthread_t* threadPool = malloc(sizeof(pthread_t)*numThread);
+    if (threadPool == NULL){
+        errno = ENOMEM;
+        perror("inizializzazione thread_pool");
+        exit(EXIT_FAILURE);
+    }
+    int i;
+    for (i = 0; i < numThread; i++){
+        SYSCALL_EXITF(pthread_create(&threadPool[i],NULL, worker,(void*)(&pip[1])), "creazione thread error")
+    }
 
-        //pipe per la comunicazione manager-worker
-        int pip[2];
-        output = pipe(pip);
-        if (output == -1){
-            perror("creazione pipe");
-            exit(EXIT_FAILURE);
-        }
+    int socketFD;
+    int clientFD;
+    int numFD = 0;
+    int fd;
+    fd_set sset;
+    fd_set rdSet;
+    struct sockaddr_un sa;
+    strncpy(sa.sun_path, socket_name, UNIX_PATH_MAX);
+    sa.sun_family = AF_UNIX;
 
-        // thread pool
-        pthread_t* threadPool = malloc(sizeof(pthread_t)*numThread);
-        if (threadPool == NULL){
-            perror("inizializzazione thread_pool");
-            exit(EXIT_FAILURE);
-        }
-        for (i = 0; i < numThread; i++){
-            output = pthread_create(&threadPool[i],NULL, worker,(void*)(&pip[1]));
-            if (output == -1){
-                perror("creazione pthread");
-                fflush(stdout);
-                exit(EXIT_FAILURE);
-            }
-        }
+    SYSCALL_EXITF(socketFD = socket(AF_UNIX,SOCK_STREAM,0), "creazione socket error")
+    SYSCALL_EXITF(bind(socketFD,(struct sockaddr*)&sa,sizeof(sa)), "bind socket error")
+    SYSCALL_EXITF(listen(socketFD, SOMAXCONN), "listen socket error")
 
-        //socket gestione
-        int socketFD;
-        int clientFD;
-        int numFD = 0;
-        int fd;
-        fd_set set;
-        fd_set rdSet;
-        struct sockaddr_un sa;
-        strncpy(sa.sun_path, socket_name, UNIX_PATH_MAX);
-        sa.sun_family = AF_UNIX;
+    if (socketFD > numFD)
+        numFD = socketFD;
+    FD_ZERO(&sset);
+    FD_SET(socketFD,&sset);
 
-        if ((socketFD = socket(AF_UNIX,SOCK_STREAM,0)) == -1){
-            perror("creazione del socket");
-            exit(EXIT_FAILURE);
-        }
+    if (pip[0] > numFD)
+        numFD = pip[0];
+    FD_SET(pip[0],&sset);
 
-        output = bind(socketFD,(struct sockaddr*)&sa,sizeof(sa));
-        if (output == -1){
-            perror("bind del socket");
-            exit(EXIT_FAILURE);
-        }
+    printf("Attesa dei Clients\n");
 
-        listen(socketFD, SOMAXCONN);
-        if (output == -1){
-            perror("listen del socket");
-            exit(EXIT_FAILURE);
-        }
-
-        //numFD ha il valore del massimo descrittore attivo
-        if (socketFD > numFD) 
-            numFD = socketFD;
-        //registrazione del socket
-        FD_ZERO(&set);
-        FD_SET(socketFD,&set);
-        //registrazione della pipe
-        if (pip[0] > numFD) 
-            numFD = pip[0];
-        FD_SET(pip[0],&set);
-
-        printf("Attesa dei Clients\n");
-
-        while (TRUE){
-            rdSet = set;//ripristino il set di partenza
-            if (select(numFD+1,&rdSet,NULL,NULL,NULL) == -1){//gestione errore
-                if (end == HARD_END) break;//chiusura bruta
-                else if (end == SOFT_END) { //chiusura soft
-                    if (numConnectionsCurr==0) break;
-                    else {
-                        printf("Chiusura Soft\n");
-                        FD_CLR(socketFD,&set);//rimozione del fd del socket dal set
-                        if (socketFD == numFD) numFD = updateMax(set,numFD);//aggiorno l'indice massimo
-                        close(socketFD);//chiusura del socket
-                        rdSet = set;
-                        output = select(numFD+1,&rdSet,NULL,NULL,NULL);
-                        if (output == -1){
-                            perror("select");
-                            break;
-                        }
+    while (TRUE){
+        rdSet = sset;//ripristino il set di partenza
+        if (select(numFD+1,&rdSet,NULL,NULL,NULL) == -1){//gestione errore
+            if (end == HARD_END) break;//chiusura bruta
+            else if (end == SOFT_END) { //chiusura soft
+                if (numConnectionsCurr==0) break;
+                else {
+                    printf("Chiusura Soft\n");
+                    FD_CLR(socketFD,&sset);//rimozione del fd del socket dal set
+                    if (socketFD == numFD) numFD = updateMax(sset,numFD);//aggiorno l'indice massimo
+                    close(socketFD);//chiusura del socket
+                    rdSet = sset;
+                    int output = select(numFD+1,&rdSet,NULL,NULL,NULL);
+                    if (output == -1){
+                        perror("select");
+                        break;
                     }
-                }else {//fallimento select
-                    perror("select");
-                    break;
                 }
+            }else {//fallimento select
+                perror("select");
+                break;
             }
-            //controlliamo tutti i file descriptors
-            for (fd = 0; fd <= numFD; fd++) {
-                if (FD_ISSET(fd,&rdSet)){
-                    if (fd == socketFD){ //il socket è pronto per accettare una nuova richiesta di connessine
-                        if ((clientFD = accept(socketFD,NULL,0)) == -1){
-                            if (end == HARD_END)
-                                break;//terminazione bruta
-                            else if (end == SOFT_END) {//terminazione soft
-                                if (numConnectionsCurr == 0)
-                                    break;
-                            }else {
-                                perror("Errore dell' accept");
-                            }
+        }
+        //controlliamo tutti i file descriptors
+        for (fd = 0; fd <= numFD; fd++) {
+            if (FD_ISSET(fd,&rdSet)){
+                if (fd == socketFD){ //il socket è pronto per accettare una nuova richiesta di connessine
+                    if ((clientFD = accept(socketFD,NULL,0)) == -1){
+                        if (end == HARD_END)
+                            break;
+                        else if (end == SOFT_END) {//terminazione soft
+                            if (numConnectionsCurr == 0)
+                                break;
+                        }else {
+                            perror("Errore dell' accept");
                         }
-                        FD_SET(clientFD,&set);//il file del client è pronto in lettura
-                        if (clientFD > numFD) 
-                            numFD = clientFD;//tengo aggiornato l'indice massimo
-                        numConnectionsCurr++;//aggiornamento variabili per le statistiche
-                        if(numConnectionsCurr > maxNumConnections) 
-                            maxNumConnections = numConnectionsCurr;
-                        printf ("SERVER : Client Connesso\n");
                     }
-                    else
-                        if (fd == pip[0]){// il client è pronto in lettura
+                    FD_SET(clientFD,&sset);//il file del client è pronto in lettura
+                    if (clientFD > numFD)
+                        numFD = clientFD;
+                    numConnectionsCurr++;
+                    if(numConnectionsCurr > maxNumConnections)
+                        maxNumConnections = numConnectionsCurr;
+                    printf ("SERVER : Client Connesso\n");
+                }
+                else
+                    if (fd == pip[0]){
                         int clientFD1;
                         int l;
                         int flag;
-                        if ((l = (int)read(pip[0],&clientFD1,sizeof(clientFD1))) > 0){ //lettura del fd di un client
-                            output = (int)read(pip[0],&flag,sizeof(flag));
+                        if ((l = (int)read(pip[0],&clientFD1,sizeof(clientFD1))) > 0){
+                            int output = (int)read(pip[0],&flag,sizeof(flag));
                             if (output == -1){
                                 perror("errore nel dialogo Master/Worker");
                                 exit(EXIT_FAILURE);
                             }
-                            if (flag == 1){//il client è terminato, il suo fd deve essere rimosso dal set
+                            if (flag == 1){
                                 printf("Chiusura della connessione col client\n");
-                                FD_CLR(clientFD1,&set);//rimozione del fd del client termianto dal set
+                                FD_CLR(clientFD1,&sset);
                                 if (clientFD1 == numFD)
-                                    numFD = updateMax(set,numFD);//aggiorno l'indice massimo
-                                close(clientFD1);//chiusura del client
-                                numConnectionsCurr--;//aggiornamento statistiche
+                                    numFD = updateMax(sset,numFD);
+                                close(clientFD1);
+                                numConnectionsCurr--;
                                 if (end == 2 && numConnectionsCurr == 0){
                                     printf("Terminazione Soft\n");
                                     softEnd = TRUE;
@@ -2525,9 +2474,9 @@ int main(int argc, char* argv[]){
                                 }
                             }
                             else{
-                                FD_SET(clientFD1,&set);
+                                FD_SET(clientFD1,&sset);
                                 if (clientFD1 > numFD)
-                                    numFD = clientFD1;//mi assicuro che numFD contenga l'indice massimo
+                                    numFD = clientFD1;
                             }
                         }
                         else
@@ -2536,27 +2485,24 @@ int main(int argc, char* argv[]){
                                 exit(EXIT_FAILURE);
                             }
                     }
-                        else{
-                            //il fd individuato è quello del canale di comunicazione client/server
-                            //il client è pronto in lettura
-                            Pthread_mutex_lock(&lockClientList);
-                            cListAddHead(clientList,fd);
-                            pthread_cond_signal(&notEmpty);
-                            Pthread_mutex_unlock(&lockClientList);
-
-                            FD_CLR(fd,&set);
-                        }
-                }
+                    else{
+                        Pthread_mutex_lock(&lockClientList);
+                        cListAddHead(clientList,fd);
+                        pthread_cond_signal(&notEmpty);
+                        Pthread_mutex_unlock(&lockClientList);
+                        FD_CLR(fd,&sset);
+                    }
             }
-            if (softEnd == TRUE)
-                break;
         }
+        if (softEnd == TRUE)
+            break;
+    }
 
         printf("\nChiusura del Server...\n");
 
         Pthread_mutex_lock(&lockClientList);
         for (i = 0; i < numThread; i++){
-            cListAddHead(clientList,-1);
+            cListAddHead(clientList,-1); //comunico ai worker di terminare
             pthread_cond_signal(&notEmpty);
         }
         Pthread_mutex_unlock(&lockClientList);
@@ -2569,46 +2515,37 @@ int main(int argc, char* argv[]){
         }
         free(threadPool);
         remove(socket_name);
-    }
 
-    {
-        size_t defaultNumRead = 1;
-        size_t defaultNumWrite = 1;
-        if (numRead != 0) 
-            defaultNumRead = numRead;
-        if (numWrite != 0) 
-            defaultNumWrite = numWrite;
-        dimReadMedia = dimRead/defaultNumRead;
-        dimWriteMedia =  dimWrite/defaultNumWrite;
-        maxDimReachedMB =  maxDimReached/(1024 * 1024);
-        maxDimReachedKB = maxDimReached / 1024;
+    size_t defaultNumRead = 1;
+    size_t defaultNumWrite = 1;
+    if (numRead != 0)
+        defaultNumRead = numRead;
+    if (numWrite != 0)
+        defaultNumWrite = numWrite;
+    dimReadMedia = dimRead/defaultNumRead;
+    dimWriteMedia =  dimWrite/defaultNumWrite;
+    maxDimReachedMB =  maxDimReached/(1024 * 1024);
+    maxDimReachedKB = maxDimReached / 1024;
 
-    }
 
-    {
-        fprintf(fileLog,"RIASSUNTO STATISTICHE:\n");
-        fprintf(fileLog,"-Numero di read: %lu;\n-Size media delle letture in bytes: %lu;\n-Numero di write: %lu;\n-Size media delle scritture in bytes: %lu;\n-Numero di lock: %lu;\n-Numero di openlock: %lu;\n-Numero di unlock: %lu;\n-Numero di close: %lu;\n-Dimensione massima dello storage in MB: %lu;\n-Dimensione massima dello storage in numero di files: %lu;\n-Numero di replace per selezionare un file vittima: %lu;\n-Massimo numero di connessioni contemporanee: %lu;\n",numRead,dimReadMedia,numWrite,dimWriteMedia,numLock,numOpenLock,numUnlock,numClose,maxDimReachedMB,numFileMaxReached,replacement,maxNumConnections);
-        // il numero di richieste soddisfatte da ogni thread è lasciato al parsing in statistiche.sh
-    } // chiusura del file di log
+    fprintf(fileLog,"RIASSUNTO STATISTICHE:\n");
+    fprintf(fileLog,"-Numero di read: %lu;\n-Size media delle letture in bytes: %lu;\n-Numero di write: %lu;\n-Size media delle scritture in bytes: %lu;\n-Numero di lock: %lu;\n-Numero di openlock: %lu;\n-Numero di unlock: %lu;\n-Numero di close: %lu;\n-Dimensione massima dello storage in MB: %lu;\n-Dimensione massima dello storage in numero di files: %lu;\n-Numero di replace per selezionare un file vittima: %lu;\n-Massimo numero di connessioni contemporanee: %lu;\n",numRead,dimReadMedia,numWrite,dimWriteMedia,numLock,numOpenLock,numUnlock,numClose,maxDimReachedMB,numFileMaxReached,replacement,maxNumConnections);
+    // il numero di richieste soddisfatte da ogni thread è lasciato al parsing in statistiche.sh
 
-    {
-        printf("SERVER STATISTICHE:\n");
-        printf("Numero Massimo di files raggiunto: %lu\n", numFileMaxReached);
-        printf("Dimensione Massima raggiunta dallo storage in Byte: %lu\n", maxDimReached);
-        printf("Dimensione Massima raggiunta dallo storage in KByte: %lu\n", maxDimReachedKB);
-        printf("Dimensione Massima raggiunta dallo storage in MByte: %lu\n", maxDimReachedMB);
-        printf("Numero di volte in cui è stato avviato l'algoritmo di rimpiazzamento: %lu\n", numReplaceAlgo);
-        printf("Stato dello Storage al momento della chiusura\n");
-        hashPrint(storage);
-    }
 
-    {  //liberazione della memoria
-        hashFree(storage);
-        FIFOFree(queue);
-        cListFree(clientList);
-        fclose(fileLog);
+    printf("SERVER STATISTICHE:\n");
+    printf("Numero Massimo di files raggiunto: %lu\n", numFileMaxReached);
+    printf("Dimensione Massima raggiunta dallo storage in Byte: %lu\n", maxDimReached);
+    printf("Dimensione Massima raggiunta dallo storage in KByte: %lu\n", maxDimReachedKB);
+    printf("Dimensione Massima raggiunta dallo storage in MByte: %lu\n", maxDimReachedMB);
+    printf("Numero di volte in cui è stato avviato l'algoritmo di rimpiazzamento: %lu\n", numReplaceAlgo);
+    printf("Stato dello Storage al momento della chiusura\n");
+    hashPrint(storage);
 
-    }
+    hashFree(storage);
+    FIFOFree(queue);
+    cListFree(clientList);
+    fclose(fileLog);
 
     return 0;
 }
