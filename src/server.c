@@ -2209,14 +2209,9 @@ static void* worker (void* arg){
 
             if (len == -1 || len == 0){// il client è disconnesso
                 endJob = 1;
-                if (write(pipeFD, &clientFD, sizeof(clientFD)) == -1){
-                    perror("Worker : scrittura nella pipe");
-                    exit(EXIT_FAILURE);
-                }
-                if (write(pipeFD, &endJob, sizeof(endJob)) == -1){
-                    perror("Worker : scrittura nella pipe");
-                    exit(EXIT_FAILURE);
-                }
+                SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker: pipe error")
+                SYSCALL_EXITF(write(pipeFD, &endJob, sizeof(endJob)), "Worker: pipe error")
+
             }
             else{// richiesta del client ricevuta correttamente
                 job(quest, clientFD, pipeFD, &endJob);
@@ -2452,14 +2447,10 @@ int main(int argc, char* argv[]){
                 else
                     if (fd == pip[0]){
                         int clientFD1;
-                        int l;
+                        int len;
                         int flag;
-                        if ((l = (int)read(pip[0],&clientFD1,sizeof(clientFD1))) > 0){
-                            int output = (int)read(pip[0],&flag,sizeof(flag));
-                            if (output == -1){
-                                perror("errore nel dialogo Master/Worker");
-                                exit(EXIT_FAILURE);
-                            }
+                        if ((len = (int)read(pip[0],&clientFD1,sizeof(clientFD1))) > 0){
+                            SYSCALL_EXITF((int)read(pip[0],&flag,sizeof(flag)), "dialogo Master-Worker error")
                             if (flag == 1){
                                 printf("Chiusura della connessione col client\n");
                                 FD_CLR(clientFD1,&sset);
@@ -2480,7 +2471,7 @@ int main(int argc, char* argv[]){
                             }
                         }
                         else
-                            if (l == -1){
+                            if (len == -1){
                                 perror("errore nel dialogo Master/Worker");
                                 exit(EXIT_FAILURE);
                             }
