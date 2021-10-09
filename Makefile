@@ -4,13 +4,11 @@ TARGETS		= server client
 INCLUDES    = -I ./includes/api.h
 LIB 		= -L ./lib/ lib/libapi.a
 
-.PHONY: all clean cleanall test1 test2F test2var test3
+.PHONY: all clean cleanall test1 test2FIFO test2LFU test3
 
 #genera tutti gli eseguibili
 all : $(TARGETS)
 
-# $< rappresenta il primo prerequisito (solitamente un file sorgente)
-# $@ rappresenta il target che stiamo generando
 server : src/server.c
 	$(CC) $(CFLAGS) src/server.c -o server -lpthread
 
