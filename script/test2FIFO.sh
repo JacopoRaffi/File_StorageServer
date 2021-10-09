@@ -12,7 +12,6 @@ sleep 2 #attesa post avvio server
 
 
 ./client -f ./serverSocket.sk -t 200 -W ./Test/Test2/f1.txt, ./Test/Test2/f2.txt -D ./ShinoJ -p
-
 ./client -f ./serverSocket.sk -t 200 -W ./Test/Test2/f3.txt, ./Test/Test2/f4.txt -D ./ShinoJ -p
 
 #invio di sighup al server
