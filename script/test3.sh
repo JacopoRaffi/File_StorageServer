@@ -2,8 +2,9 @@
 
 ./server -cnfg ./Config/config3.txt &
 SERVER_PID=$! #pid del processo più recente
+MAIN_PID=$$
 
-(sleep 30; kill -s SIGINT $SERVER_PID)&
+(sleep 30; kill -s SIGINT $SERVER_PID; kill $MAIN_PID)&
 
 echo "Avvio del Server"
 
