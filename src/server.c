@@ -2464,11 +2464,6 @@ int main(int argc, char* argv[]){
                                     break;
                                 }
                             }
-                            else{
-                                FD_SET(clientFD1,&sset);
-                                if (clientFD1 > numFD)
-                                    numFD = clientFD1;
-                            }
                         }
                         else
                             if (len == -1){
