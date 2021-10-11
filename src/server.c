@@ -1778,17 +1778,10 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
     token = strtok_r(quest,";",&save);
     if (token == NULL){ // tutte le richieste sono state esaudite
         resetLockOwner(storage,clientFD);
-        *endJob = 1;
-        if (write(pipeFD, &clientFD, sizeof(clientFD)) == -1){
-            perror("Worker : scrittura nella pipe");
-            exit(EXIT_FAILURE);
-        }
-        if (write(pipeFD, endJob, sizeof(*endJob)) == -1){
-            perror("Worker : scrittura nella pipe");
-            exit(EXIT_FAILURE);
-        }
+        *endJob = 1; //può chiudere la connessione col client
+        SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker: scrittura pipe")
+        SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)), "Worker: scrittura pipe")
     }
-
     if (strcmp(token,"openFile") == 0){
         // tokenizzazione degli argomenti
         token = strtok_r(NULL,";",&save);
@@ -1809,8 +1802,8 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         if (writen(clientFD, out, DIM_MSG) == -1){
             perror("Worker : scrittura nel socket");
             *endJob = 1;
-            write(pipeFD,&clientFD,sizeof(clientFD));
-            write(pipeFD,endJob,sizeof(*endJob));
+            SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker : scrittura pipe");
+            SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)),"Worker : scrittura pipe");
             return;
         }
 
@@ -1837,8 +1830,8 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         }
         if (writen(clientFD,out,DIM_MSG) == -1){
             *endJob = 1;
-            write(pipeFD,&clientFD,sizeof(clientFD));
-            write(pipeFD,endJob,sizeof(*endJob));
+            SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker : scrittura pipe");
+            SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)),"Worker : scrittura pipe");
             return;
         }
 
@@ -1867,8 +1860,8 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         if (writen(clientFD,out,DIM_MSG) == -1){
             perror("Worker : scrittura nel socket");
             *endJob = 1;
-            write(pipeFD,&clientFD,sizeof(clientFD));
-            write(pipeFD,endJob,sizeof(*endJob));
+            SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker : scrittura pipe");
+            SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)),"Worker : scrittura pipe");
             return;
         }
         Pthread_mutex_lock(&logLock);
@@ -1894,8 +1887,8 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         if (writen(clientFD,out,DIM_MSG) == -1){
             perror("Worker : scrittura nel socket");
             *endJob = 1;
-            write(pipeFD,&clientFD,sizeof(clientFD));
-            write(pipeFD,endJob,sizeof(*endJob));
+            SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker : scrittura pipe");
+            SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)),"Worker : scrittura pipe");
             return;
         }
         Pthread_mutex_lock(&logLock);
@@ -1922,8 +1915,8 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         if (writen(clientFD,out,DIM_MSG) == -1){
             perror("Worker : scrittura nel socket");
             *endJob = 1;
-            write(pipeFD,&clientFD,sizeof(clientFD));
-            write(pipeFD,endJob,sizeof(*endJob));
+            SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker : scrittura pipe");
+            SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)),"Worker : scrittura pipe");
             return;
         }
 
@@ -1960,8 +1953,8 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         if (writen(clientFD,out,DIM_MSG) == -1){
             perror("Worker : scrittura nel socket");
             *endJob = 1;
-            write(pipeFD,&clientFD,sizeof(clientFD));
-            write(pipeFD,endJob,sizeof(*endJob));
+            SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker : scrittura pipe");
+            SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)),"Worker : scrittura pipe");
             fileListFree(tmp);
             return;
         }
@@ -1986,8 +1979,8 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             if (writen(clientFD,out,DIM_MSG) == -1){
                 perror("Worker : scrittura nel socket");
                 *endJob = 1;
-                write(pipeFD,&clientFD,sizeof(clientFD));
-                write(pipeFD,endJob,sizeof(*endJob));
+                SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker : scrittura pipe");
+                SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)),"Worker : scrittura pipe");
                 fileListFree(tmp);
                 return;
             }
@@ -2027,8 +2020,8 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         if (writen(clientFD,out,DIM_MSG) == -1){
             perror("Worker : scrittura nel socket");
             *endJob = 1;
-            write(pipeFD,&clientFD,sizeof(clientFD));
-            write(pipeFD,endJob,sizeof(*endJob));
+            SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker : scrittura pipe");
+            SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)),"Worker : scrittura pipe");
             fileListFree(tmp);
             return;
         }
@@ -2049,8 +2042,8 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             {
                 perror("Worker : scrittura nel socket");
                 *endJob = 1;
-                write(pipeFD,&clientFD,sizeof(clientFD));
-                write(pipeFD,endJob,sizeof(*endJob));
+                SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker : scrittura pipe");
+                SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)),"Worker : scrittura pipe");
                 fileListFree(tmp);
                 return;
             }
@@ -2093,8 +2086,8 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         if (writen(clientFD,out,DIM_MSG) == -1){
             perror("Worker : scrittura nel socket");
             *endJob = 1;
-            write(pipeFD,&clientFD,sizeof(clientFD));
-            write(pipeFD,endJob,sizeof(*endJob));
+            SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker : scrittura pipe");
+            SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)),"Worker : scrittura pipe");
             free(buf);
             return;
         }
@@ -2127,8 +2120,8 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         if (writen(clientFD,out,DIM_MSG) == -1){
             perror("Worker : scrittura nel socket");
             *endJob = 1;
-            write(pipeFD,&clientFD,sizeof(clientFD));
-            write(pipeFD,endJob,sizeof(*endJob));
+            SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker : scrittura pipe");
+            SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)),"Worker : scrittura pipe");
             fileListFree(tmp);
             return;
         }
@@ -2143,8 +2136,8 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
             {
                 perror("Worker : scrittura nel socket");
                 *endJob = 1;
-                write(pipeFD,&clientFD,sizeof(clientFD));
-                write(pipeFD,endJob,sizeof(*endJob));
+                SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker : scrittura pipe");
+                SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)),"Worker : scrittura pipe");
                 fileListFree(tmp);
                 return;
             }
@@ -2172,25 +2165,21 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         sprintf(out,"-1;%d",ENOSYS);
         if (writen(clientFD,out,DIM_MSG) == -1){
             perror("Worker : scrittura nel socket");
-            *endJob = 1;
-            if (write(pipeFD, &clientFD, sizeof(clientFD)) == -1){
-                perror("Worker : scrittura nella pipe");
-                exit(EXIT_FAILURE);
-            }
-            if (write(pipeFD, endJob, sizeof(*endJob)) == -1){
-                perror("Worker : scrittura nella pipe");
-                exit(EXIT_FAILURE);
-            }
             return;
         }
     }
+
+     *endJob = 0; //comunico al manager che ho eseguito la richiesta del client
+    SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker : scrittura pipe");
+    SYSCALL_EXITF(write(pipeFD, endJob, sizeof(*endJob)),"Worker : scrittura pipe");
+
 }
 static void* worker (void* arg){
     int pipeFD = *((int*)arg);
     int clientFD;
 
     while (TRUE){
-        int endJob = 0; //valore indicante la terminazione del client
+        int endJob; //valore indicante la terminazione del client o della richiesta
         //un client viene espulso dalla coda secondo la politica FIFO
         Pthread_mutex_lock(&lockClientList);
         clientFD = ClistPopWorker(clientList);
@@ -2200,22 +2189,17 @@ static void* worker (void* arg){
             return (void*) 0; //indica la terminazione del server
         }
 
-        while (endJob != 1){
-            char quest [DIM_MSG];
-            memset(quest,0,DIM_MSG);
+        char quest [DIM_MSG];
+        memset(quest,0,DIM_MSG);
+        int len = readn(clientFD, quest, DIM_MSG);
 
-            //il worker esegue tutte le richieste del client
-            int len = readn(clientFD, quest, DIM_MSG);
-
-            if (len == -1 || len == 0){// il client è disconnesso
-                endJob = 1;
-                SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker: pipe error")
-                SYSCALL_EXITF(write(pipeFD, &endJob, sizeof(endJob)), "Worker: pipe error")
-
+        if (len == -1 || len == 0){// il client è disconnesso
+            endJob = 1;
+            SYSCALL_EXITF(write(pipeFD, &clientFD, sizeof(clientFD)), "Worker: pipe error")
+            SYSCALL_EXITF(write(pipeFD, &endJob, sizeof(endJob)), "Worker: pipe error")
             }
-            else{// richiesta del client ricevuta correttamente
-                job(quest, clientFD, pipeFD, &endJob);
-            }
+        else{// richiesta del client ricevuta correttamente
+            job(quest, clientFD, pipeFD, &endJob);
         }
     }
     return (void*) 0;
@@ -2463,6 +2447,11 @@ int main(int argc, char* argv[]){
                                     softEnd = TRUE;
                                     break;
                                 }
+                            }
+                            else{
+                                FD_SET(clientFD1,&sset);
+                                if (clientFD1 > numFD)
+                                    numFD = clientFD1;
                             }
                         }
                         else
