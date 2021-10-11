@@ -8,6 +8,8 @@ MAIN_PID=$$
 
 echo "Avvio del Server"
 
+chmod +x ./client
+
 sleep 2
 
 # il test si assicura che vi siano sempre almeno 10 client connessi al server
@@ -22,7 +24,7 @@ do
 ./client -f ./serverSocket.sk -t 0 -W ./Test/Test3/f7.txt -r ./Test/Test3/f7.txt -l ./Test/Test3/f7.txt -u ./Test/Test3/f7.txt -c ./Test/Test3/f7.txt &
 ./client -f ./serverSocket.sk -t 0 -W ./Test/Test3/f8.txt -r ./Test/Test3/f8.txt -l ./Test/Test3/f8.txt -u ./Test/Test3/f8.txt -c ./Test/Test3/f8.txt &
 ./client -f ./serverSocket.sk -t 0 -W ./Test/Test3/f9.txt -r ./Test/Test3/f9.txt -l ./Test/Test3/f9.txt -u ./Test/Test3/f9.txt -c ./Test/Test3/f9.txt &
-./client -f ./serverSocket.sk -t 0 -W ./Test/Test3/f10.txt -r ./Test/Test3/f10.txt -l ./Test/Test3/f10.txt -u ./Test/Test3/f10.txt -c ./Test/Test3/f10.txt &
+./client -f ./serverSocket.sk -t 0 -W ./Test/Test3/f10.txt -r ./Test/Test3/f10.txt -l ./Test/Test3/f10.txt -u ./Test/Test3/f10.txt -c ./Test/Test3/f10.txt
 
 
 done
