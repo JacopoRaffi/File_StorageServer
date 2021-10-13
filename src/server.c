@@ -364,8 +364,7 @@ static void freeFile (file* file1){
     free(file1);
 }
 
-static file* cloneFile (file* file1)
-{
+static file* cloneFile (file* file1){
     if (file1 == NULL)
         return NULL;
 
@@ -928,14 +927,42 @@ FIFOnode* copy(FIFOnode* cp){
 
     return tmp;
 }
+
+static void lockStorage(hash* tbl){
+    if(tbl == NULL){
+        errno = EINVAL;
+        return;
+    }
+
+    int i;
+    for(i = 0; i < tbl->numBuckets; i++)
+        Pthread_mutex_lock(&(tbl->buckets[i]->mtx));
+}
+
+static void unlockStorage(hash* tbl){
+    if(tbl == NULL){
+        errno = EINVAL;
+        return;
+    }
+
+    int i;
+    for(i = 0; i < tbl->numBuckets; i++)
+        Pthread_mutex_unlock(&(tbl->buckets[i]->mtx));
+}
+
 static fileList* hashReplaceLFU(hash* tbl, const char* path, size_t client){
     if(tbl == NULL || path == NULL || client < 0){
         errno = EINVAL;
         return NULL;
     }
+    lockStorage(storage);
+    if(errno != 0)
+        return NULL;
     fileList* replaced = fileListCreate(); // inizializzazione della lista output
     if (replaced == NULL){
         errno = ENOMEM;
+        unlockStorage(storage);
+        fileListFree(replaced);
         return NULL;
     }
 
@@ -943,10 +970,12 @@ static fileList* hashReplaceLFU(hash* tbl, const char* path, size_t client){
     FIFOnode* killedFile = NULL;
     fifo* queueCopy = FIFOcreate();
     if (queueCopy == NULL){
+        unlockStorage(storage);
         fileListFree(replaced);
         errno = ENOMEM;
         return NULL;
     }
+    Pthread_mutex_lock(&lockStats);
     if(currDim > maxDIm){ //ordino solo se necessario
         FIFOnode* tmp = queue -> head;
         while(tmp){
@@ -958,20 +987,25 @@ static fileList* hashReplaceLFU(hash* tbl, const char* path, size_t client){
             tmp = tmp -> next;
         }
         quickSortLFU(queueCopy);
-
     }
+    Pthread_mutex_unlock(&lockStats);
+
+
 
     while (currDim > maxDIm){ // finchè la dimensione corrente è maggiore della massima
         bool = 1; // la flag viene impostata  per indicare che l'algoritmo di rimpiazzamento è di fatto partito
         if (killedFile == NULL)
             killedFile = queueCopy->tail;
         if (killedFile == NULL){
+            errno = EFBIG;
+            unlockStorage(storage);
             fileListFree(replaced);
             return NULL;
         }
 
         file* removedFile = hashGetFile(storage, killedFile->path); // il punatatore al file individuato con politica FIFO viene ottenuto
         if (removedFile == NULL){
+            unlockStorage(storage);
             fileListFree(replaced);
             return NULL;
         }
@@ -980,33 +1014,35 @@ static fileList* hashReplaceLFU(hash* tbl, const char* path, size_t client){
             killedFile = killedFile->prec;
             if (killedFile == NULL){
                 errno = EFBIG;
+                unlockStorage(storage);
                 fileListFree(replaced);
                 return NULL;
             }
             removedFile = hashGetFile(storage,killedFile->path);
             if (removedFile == NULL){
+                unlockStorage(storage);
                 fileListFree(replaced);
                 return NULL;
             }
         }
 
         file* copy = cloneFile(removedFile); // il file rimovibile può essere rimosso
-        if (copy == NULL)
+        if (copy == NULL) {
+            unlockStorage(storage);
+            fileListFree(replaced);
             return NULL;
-        fileList* tmpList = hashGetList(storage, removedFile -> path);
-        Pthread_mutex_lock(&(tmpList->mtx));
+        }
         if (hashRemove(storage, removedFile ->path) == NULL) {
-            Pthread_mutex_unlock(&(tmpList->mtx));
+            unlockStorage(storage);
+            fileListFree(replaced);
             return NULL;
         }
-        Pthread_mutex_unlock(&(tmpList->mtx));
         killedFile = killedFile->prec;
-        Pthread_mutex_lock(&(replaced -> mtx));
         if (fileListAddHead(replaced,copy) == -1) {
-            Pthread_mutex_unlock(&(replaced->mtx));
+            unlockStorage(storage);
+            fileListFree(replaced);
             return NULL;
         }
-        Pthread_mutex_unlock(&(replaced->mtx));
         Pthread_mutex_lock(&lockStats);
         replacement++;   // le statistiche vengono aggiornate
         Pthread_mutex_unlock(&lockStats);
@@ -1018,7 +1054,7 @@ static fileList* hashReplaceLFU(hash* tbl, const char* path, size_t client){
     if (currDim > maxDimReached)
         maxDimReached = currDim;
     Pthread_mutex_unlock(&lockStats);
-
+    unlockStorage(storage);
     FIFOFree(queueCopy);
     return replaced;
 }
@@ -1028,27 +1064,36 @@ static fileList* hashReplaceFIFO (hash* tbl, const char* path, size_t client){
         errno = EINVAL;
         return NULL;
     }
-
+    lockStorage(storage); //mi assicuro di bloccare tutto lo storage
+    if(errno != 0)
+        return NULL;
     fileList* replaced = fileListCreate(); // inizializzazione della lista output
     if (replaced == NULL){
         errno = ENOMEM;
+        unlockStorage(storage);
+        Pthread_mutex_unlock(&lockStats);
+        fileListFree(replaced);
         return NULL;
     }
 
     int bool = 0; // flag per evidenziare l'avvio o meno dell'algoritmo per i rimpiazzamenti
     FIFOnode* killedFile = NULL;
 
+
     while (currDim > maxDIm){
         bool = 1; // la flag viene impostata  per indicare che l'algoritmo di rimpiazzamento è partito
         if (killedFile == NULL)
             killedFile = queue->tail; // la coda fifo verrà effettivamente percorsa dal primo elemento inserito verso l'ultimo
         if (killedFile == NULL){
+            errno = EFBIG;
+            unlockStorage(storage);
             fileListFree(replaced);
             return NULL;
         }
 
         file* removedFile = hashGetFile(storage, killedFile->path); // il punatatore al file individuato con politica FIFO viene ottenuto
         if (removedFile == NULL){
+            unlockStorage(storage);
             fileListFree(replaced);
             return NULL;
         }
@@ -1058,44 +1103,44 @@ static fileList* hashReplaceFIFO (hash* tbl, const char* path, size_t client){
             killedFile = killedFile->prec;
             if (killedFile == NULL){
                 errno = EFBIG;
+                unlockStorage(storage);
                 fileListFree(replaced);
                 return NULL;
             }
 
             removedFile = hashGetFile(storage,killedFile->path);
             if (removedFile == NULL){
+                unlockStorage(storage);
                 fileListFree(replaced);
                 return NULL;
             }
         }
 
         file* copy = cloneFile(removedFile); // il file rimovibile può essere rimosso
-        if (copy == NULL) 
+        if (copy == NULL) {
+            unlockStorage(storage);
+            fileListFree(replaced);
             return NULL;
+        }
         killedFile = killedFile->prec;
-        fileList* tmpList = hashGetList(storage, removedFile -> path);
-        Pthread_mutex_lock(&(tmpList->mtx));
         if (hashRemove(storage, removedFile ->path) == NULL) {
-            Pthread_mutex_unlock(&(tmpList->mtx));
+            unlockStorage(storage);
+            fileListFree(replaced);
             return NULL; // il file rimovibile viene rimosso
         }
-        Pthread_mutex_unlock(&(tmpList->mtx));
-        Pthread_mutex_lock(&(replaced -> mtx));
         if (fileListAddHead(replaced,copy) == -1) {
-            Pthread_mutex_unlock(&(tmpList->mtx));
+            unlockStorage(storage);
+            fileListFree(replaced);
             return NULL;
         }
-        Pthread_mutex_unlock(&(tmpList->mtx));
-        Pthread_mutex_lock(&lockStats);
         replacement++;   // le statistiche vengono aggiornate
-        Pthread_mutex_unlock(&lockStats);
     }
-
     Pthread_mutex_lock(&lockStats);
-    if (bool == 1) 
+    if (bool == 1)
         numReplaceAlgo++;// le statistiche vengono aggiornate
     if (currDim > maxDimReached) 
         maxDimReached = currDim;
+    unlockStorage(storage);
     Pthread_mutex_unlock(&lockStats);
     return replaced;
 }
@@ -1939,7 +1984,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         errno = 0;
         fileList* tmp = s_writeFile(path, data, clientFD);
         int logResult;
-        if (tmp == NULL && errno != 0){
+        if (errno != 0){
             logResult = -1;
             sprintf(out,"-1;%d;",errno);
         }
@@ -2008,7 +2053,7 @@ static void job (char* quest, int clientFD, int pipeFD, int* endJob){
         fileList* tmp = s_appendToFile(path,data,clientFD);
         int logResult;
 
-        if (errno != 0){
+        if (tmp == NULL && errno != 0){
             logResult = -1;
             sprintf(out,"-1;%d;",errno);
         }
@@ -2207,7 +2252,6 @@ static void* worker (void* arg){
 
 int main(int argc, char* argv[]){
     clientList = cListCreate();
-
     if(clientList == NULL){
         exit(EXIT_FAILURE);
     }
@@ -2388,11 +2432,12 @@ int main(int argc, char* argv[]){
         if (select(numFD+1,&rdSet,NULL,NULL,NULL) == -1){//gestione errore
             if (end == HARD_END) break;//chiusura bruta
             else if (end == SOFT_END) { //chiusura soft
-                if (numConnectionsCurr==0) break;
+                if (numConnectionsCurr == 0)
+                    break;
                 else {
-                    printf("Chiusura Soft\n");
                     FD_CLR(socketFD,&sset);//rimozione del fd del socket dal set
-                    if (socketFD == numFD) numFD = updateMax(sset,numFD);//aggiorno l'indice massimo
+                    if (socketFD == numFD)
+                        numFD = updateMax(sset,numFD);//aggiorno l'indice massimo
                     close(socketFD);//chiusura del socket
                     rdSet = sset;
                     int output = select(numFD+1,&rdSet,NULL,NULL,NULL);
@@ -2440,9 +2485,9 @@ int main(int argc, char* argv[]){
                                 FD_CLR(clientFD1,&sset);
                                 if (clientFD1 == numFD)
                                     numFD = updateMax(sset,numFD);
-                                close(clientFD1);
                                 numConnectionsCurr--;
-                                if (end == 2 && numConnectionsCurr == 0){
+                                close(clientFD1);
+                                if (end == SOFT_END && numConnectionsCurr == 0){
                                     printf("Terminazione Soft\n");
                                     softEnd = TRUE;
                                     break;
@@ -2472,7 +2517,6 @@ int main(int argc, char* argv[]){
         if (softEnd == TRUE)
             break;
     }
-
         printf("\nChiusura del Server...\n");
 
         Pthread_mutex_lock(&lockClientList);
